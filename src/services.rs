@@ -3,9 +3,6 @@ use actix_web::web;
 pub mod rest_interface; // Importing the rest module
 pub mod types;
 
-
-
-
 // Intermediate function to configure services
 pub fn config_services(cfg: &mut web::ServiceConfig) {
     cfg.service(

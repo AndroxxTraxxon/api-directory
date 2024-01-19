@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-
 #[derive(Serialize, Deserialize)]
 pub struct ApiConfig {
     pub name: String,

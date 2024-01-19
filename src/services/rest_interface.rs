@@ -1,8 +1,7 @@
-
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use serde::Deserialize;
 
-use crate::services::types::{AppState, ApiConfig}; // Assuming AppState is moved to services module
+use crate::services::types::{ApiConfig, AppState}; // Assuming AppState is moved to services module
 
 #[derive(Deserialize)]
 struct NamedServicePath {
@@ -33,7 +32,7 @@ async fn update_service(
         Some(existing_service) => {
             *existing_service = service.into_inner();
             HttpResponse::Ok().body("Service updated")
-        },
+        }
         None => HttpResponse::NotFound().body("Service not found"),
     }
 }
