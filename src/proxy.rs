@@ -1,42 +1,33 @@
-use crate::services::types::ServiceRegistry;
+use crate::{api_services::db::ApiServiceRepository, database::Database};
 use actix_web::{web, Error, HttpRequest, HttpResponse, Result};
 use futures_util::stream::TryStreamExt;
 use reqwest::Client;
-use std::sync::Arc;
-use lazy_static::lazy_static;
 
-lazy_static! {
-    static ref EXCLUDE_HEADERS: std::collections::HashSet<&'static str> = {
-        let mut set = std::collections::HashSet::new();
-        set.insert("host");
-        // Add more headers to exclude as needed
-        set
-    };
-}
+const EXCLUDE_HEADERS: &[&str] = &["host"];
 
 pub async fn forward(
     req: HttpRequest,
     payload: web::Payload,
-    data: web::Data<Arc<ServiceRegistry>>,
+    db: web::Data<Database>,
 ) -> Result<HttpResponse> {
 
     let path = req.path().to_string();
-    let segments: Vec<&str> = path.splitn(3, '/').collect();
+    let segments: Vec<&str> = path.splitn(4, '/').collect();
 
-    if segments.len() != 3 {
+    if segments.len() != 4 {
         return Ok(HttpResponse::BadRequest().finish());
     }
-    let service_name = segments[1].to_string();
-    let endpoint = segments[2].to_string();
+    let api_name = String::from(segments[1]);
+    let version = String::from(segments[2]);
+    let endpoint = String::from(segments[3]);
 
-    log::debug!("Forwarding request to service {} at endpoint {}", service_name, endpoint);
+    log::debug!("Forwarding request to service {} version {} at endpoint {}", api_name, version, endpoint);
 
     let client = Client::new();
-    let service_registry = data.get_ref();
 
-    if let Some(service_url) = service_registry.services.get(&service_name) {
+    if let Some(service) = Database::get_service_by_name_and_version(&db, api_name, version).await {
         // Construct the full URL
-        let forward_url = format!("{}/{}", service_url, endpoint);
+        let forward_url = format!("{}/{}", service.forward_url, endpoint);
         log::debug!("Forwarding request to {}", forward_url);
 
 
@@ -44,7 +35,7 @@ pub async fn forward(
         let mut client_req = client.request(req.method().clone(), &forward_url);
 
         // Copy the headers
-        for (key, value) in req.headers().iter().filter(|(key, _)| !EXCLUDE_HEADERS.contains(key.as_str()))  {
+        for (key, value) in req.headers().iter().filter(|(key, _)| !EXCLUDE_HEADERS.contains(&key.as_str()))  {
             log::debug!("Passing header: {}: {:?}", key, value.clone().to_str().unwrap());
             client_req = client_req.header(key.clone(), value.clone());
         }
