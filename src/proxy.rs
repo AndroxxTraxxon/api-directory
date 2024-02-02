@@ -21,12 +21,13 @@ pub async fn forward(
     let version = String::from(segments[2]);
     let endpoint = String::from(segments[3]);
 
-    log::debug!("Forwarding request to service {} version {} at endpoint {}", api_name, version, endpoint);
+    log::debug!("Forwarding request to service [{}] version [{}] at endpoint {}", api_name, version, endpoint);
 
     let client = Client::new();
 
     if let Some(service) = Database::get_service_by_name_and_version(&db, api_name, version).await {
         // Construct the full URL
+        log::debug!("Configured Forward URL: {}", service.forward_url);
         let forward_url = format!("{}/{}", service.forward_url, endpoint);
         log::debug!("Forwarding request to {}", forward_url);
 

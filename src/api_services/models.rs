@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use validator::Validate;
+use surrealdb::sql::Thing;
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct ApiService {
-    #[validate(length(min = 1))]
-    pub id: String,
+    pub id: Option<Thing>,
 
     #[validate(length(min = 3))]
     pub api_name: String,
@@ -18,50 +18,113 @@ pub struct ApiService {
     pub version: String,
 
     #[validate]
-    pub auth_details: AuthDetails,
+    pub auth_details: Option<AuthDetails>,
 
     #[validate]
-    pub rate_limiting: RateLimiting,
+    pub rate_limiting: Option<RateLimiting>,
 
     #[validate(url)]
-    pub health_check_url: String,
+    pub health_check_url: Option<String>,
 
     #[validate(url)]
-    pub documentation_url: String,
+    pub documentation_url: Option<String>,
 
     #[validate]
     pub contact_info: ContactInfo,
 
     #[validate]
-    pub sla: SLADetails,
+    pub sla: Option<SLADetails>,
 
     #[validate]
-    pub security_requirements: SecurityRequirements,
+    pub security_requirements: Option<SecurityRequirements>,
 
-    pub data_formats: Vec<String>, // might want a custom validation here to check for valid MIME types
-    pub ip_whitelist: Vec<String>, // Custom validation could be added to ensure valid IP addresses
-    pub ip_blacklist: Vec<String>, // Same as above for IP blacklist
+    pub data_formats: Option<Vec<String>>, // might want a custom validation here to check for valid MIME types
+    pub ip_whitelist: Option<Vec<String>>, // Custom validation could be added to ensure valid IP addresses
+    pub ip_blacklist: Option<Vec<String>>, // Same as above for IP blacklist
 
     #[validate]
-    pub caching_policy: CachingPolicy,
+    pub caching_policy: Option<CachingPolicy>,
 
     #[validate(length(min = 1))]
-    pub load_balancing_strategy: String,
+    pub load_balancing_strategy: Option<String>,
 
-    pub custom_headers: Vec<String>, // Custom validation might be needed based on your header requirements
-    pub dependencies: Vec<String>,   // Validate based on your requirements for dependencies
+    pub custom_headers: Option<Vec<String>>, // Custom validation might be needed based on your header requirements
+    pub dependencies: Option<Vec<String>>,   // Validate based on your requirements for dependencies
 
     #[validate(length(min = 1))]
     pub environment: String,
 
     #[validate]
-    pub deployment_info: DeploymentInfo,
+    pub deployment_info: Option<DeploymentInfo>,
 
     #[validate]
-    pub error_handling: ErrorHandling,
+    pub error_handling: Option<ErrorHandling>,
 
     #[validate]
-    pub metadata: Vec<Metadata>,
+    pub metadata: Option<Vec<Metadata>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+pub struct PartialApiServiceUpdate {
+    #[validate(length(min = 1))]
+    pub id: Option<String>,
+
+    #[validate(length(min = 3))]
+    pub api_name: Option<String>,
+
+    #[validate(length(min = 3))]
+    pub forward_url: Option<String>,
+
+    pub active: Option<bool>,
+
+    #[validate(length(min = 1))]
+    pub version: Option<String>,
+
+    #[validate]
+    pub auth_details: Option<AuthDetails>,
+
+    #[validate]
+    pub rate_limiting: Option<RateLimiting>,
+
+    #[validate(url)]
+    pub health_check_url: Option<String>,
+
+    #[validate(url)]
+    pub documentation_url: Option<String>,
+
+    #[validate]
+    pub contact_info: Option<ContactInfo>,
+
+    #[validate]
+    pub sla: Option<SLADetails>,
+
+    #[validate]
+    pub security_requirements: Option<SecurityRequirements>,
+
+    pub data_formats: Option<Vec<String>>, // might want a custom validation here to check for valid MIME type>s
+    pub ip_whitelist: Option<Vec<String>>, // Custom validation could be added to ensure valid IP addresse>s
+    pub ip_blacklist: Option<Vec<String>>, // Same as above for IP blacklis>t
+
+    #[validate]
+    pub caching_policy: Option<CachingPolicy>,
+
+    #[validate(length(min = 1))]
+    pub load_balancing_strategy: Option<String>,
+
+    pub custom_headers: Option<Vec<String>>, // Custom validation might be needed based on your header requirement>
+    pub dependencies: Option<Vec<String>>,   // Validate based on your requirements for dependencies
+
+    #[validate(length(min = 1))]
+    pub environment: Option<String>,
+
+    #[validate]
+    pub deployment_info: Option<DeploymentInfo>,
+
+    #[validate]
+    pub error_handling: Option<ErrorHandling>,
+
+    #[validate]
+    pub metadata: Option<Vec<Metadata>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
