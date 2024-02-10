@@ -1,5 +1,5 @@
 use super::models::{ApiService, PartialApiServiceUpdate};
-use crate::database::Database;
+use crate::gw_database::Database;
 use actix_web::web::Data;
 use async_trait::async_trait;
 use serde::Serialize;

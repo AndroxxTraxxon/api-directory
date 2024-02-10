@@ -1,17 +1,31 @@
-use super::db::ApiServiceRepository;
+use super::repo::ApiServiceRepository;
 use super::models::{ApiService, PartialApiServiceUpdate};
-use crate::database::Database;
+use crate::gw_database::Database;
 use actix_web::{
     delete, get, patch, post,
-    web::{Data, Json, Path},
+    web::{Data, Json, Path, ServiceConfig, scope},
     HttpResponse, Responder,
 };
 use serde::Deserialize;
 use serde_json::json;
 
+// Intermediate function to configure services
+pub fn web_setup(cfg: &mut ServiceConfig) {
+    cfg.service(
+        scope("/cfg/v1")
+            .service(list_services)
+            .service(add_service)
+            .service(patch_service)
+            // .service(http::update_service)
+            .service(get_service_by_name_and_version)
+            .service(delete_service),
+    );
+}
+
 #[get("/api_services")]
 async fn list_services(repo: Data<Database>) -> impl Responder {
     let services = Database::get_all_services(&repo).await;
+    log::warn!("Fetching list of API services...");
     match services {
         Some(found_services) => HttpResponse::Ok().json(found_services), // Automatically serializes to JSON
         None => {
