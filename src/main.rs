@@ -2,7 +2,7 @@ use std::{fs::File, io::BufReader};
 
 use actix_web::{middleware, web, App, HttpServer};
 use env_logger;
-use rustls::{Certificate, PrivateKey};
+use rustls::pki_types::PrivateKeyDer;
 use rustls_pemfile::{certs, pkcs8_private_keys};
 
 mod gw_proxy;
@@ -39,29 +39,29 @@ async fn main() -> std::io::Result<()> {
                 web::route().to(gw_proxy::forward),
             )
     })
-    .bind_rustls_021(socket_addr, tls_config)?
+    .bind_rustls_0_22(socket_addr, tls_config)?
     .run()
     .await
 }
 
-fn load_tls_config() -> rustls::ServerConfig {
+fn load_tls_config() -> rustls::ServerConfig{
     let config = rustls::ServerConfig::builder()
-        .with_safe_defaults()
         .with_no_client_auth();
 
-    let mut certificate_file = BufReader::new(File::open(".ssl.dev/snakeoil.pem").unwrap());
-    let key_file = &mut BufReader::new(File::open(".ssl.dev/snakeoil.key").unwrap());
+    let certificate_file = &mut BufReader::new(
+        File::open(".ssl.dev/snakeoil.pem").unwrap()
+    );
+    let key_file = &mut BufReader::new(
+        File::open(".ssl.dev/snakeoil.key").unwrap()
+    );
 
-    let cert_chain = certs(&mut certificate_file)
-        .unwrap()
-        .into_iter()
-        .map(Certificate)
+    let cert_chain = certs(certificate_file)
+        .filter_map(Result::ok)
         .collect();
 
-    let mut keys: Vec<PrivateKey> = pkcs8_private_keys(key_file)
-        .unwrap()
-        .into_iter()
-        .map(PrivateKey)
+    let mut keys: Vec<_> = pkcs8_private_keys(key_file)
+        .filter_map(Result::ok)
+        .map(|pkcs8_key| PrivateKeyDer::Pkcs8(pkcs8_key))
         .collect();
 
     if keys.is_empty() {
