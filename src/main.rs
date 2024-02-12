@@ -1,28 +1,28 @@
-use std::{fs::File, io::BufReader};
-
 use actix_web::{middleware, web, App, HttpServer};
 use env_logger;
-use rustls::pki_types::PrivateKeyDer;
-use rustls_pemfile::{certs, pkcs8_private_keys};
 
-mod gw_proxy;
-mod gw_database;
-mod gw_api_services;
-mod gw_users;
+mod forwarder;
+mod database;
+mod api_services;
+mod users;
+mod tlsconf;
 
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
-    let socket_addr = "127.0.2.1:8443";
-    let tls_config = load_tls_config();
-    let db = gw_database::Database::init(
+    let socket_addr = "127.0.2.1:443";
+    let tls_config = tlsconf::load_tls_config();
+    let db = database::Database::init(
         "temp.speedb",
         "api_directory",
         "services",
     )
     .await
     .expect("Error connecting to database");
+    users::repo::setup_user_table_events(&db)
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string().as_str()))?;
 
     let db_data = web::Data::new(db);
     
@@ -33,42 +33,13 @@ async fn main() -> std::io::Result<()> {
                 "%a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
             ))
             .app_data(db_data.clone())
-            .configure(gw_api_services::rest::web_setup)
+            .configure(api_services::rest::web_setup)
             .default_service(
                 // Register `forward` as the default service
-                web::route().to(gw_proxy::forward),
+                web::route().to(forwarder::forward),
             )
     })
     .bind_rustls_0_22(socket_addr, tls_config)?
     .run()
     .await
-}
-
-fn load_tls_config() -> rustls::ServerConfig{
-    let config = rustls::ServerConfig::builder()
-        .with_no_client_auth();
-
-    let certificate_file = &mut BufReader::new(
-        File::open(".ssl.dev/snakeoil.pem").unwrap()
-    );
-    let key_file = &mut BufReader::new(
-        File::open(".ssl.dev/snakeoil.key").unwrap()
-    );
-
-    let cert_chain = certs(certificate_file)
-        .filter_map(Result::ok)
-        .collect();
-
-    let mut keys: Vec<_> = pkcs8_private_keys(key_file)
-        .filter_map(Result::ok)
-        .map(|pkcs8_key| PrivateKeyDer::Pkcs8(pkcs8_key))
-        .collect();
-
-    if keys.is_empty() {
-        eprintln!("Could not locate PKCS 8 private keys.");
-        std::process::exit(1);
-    }
-
-    config.with_single_cert(cert_chain, keys.remove(0)).unwrap()
-
 }

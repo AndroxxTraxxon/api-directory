@@ -1,5 +1,5 @@
 
-use crate::{gw_api_services::repo::ApiServiceRepository, gw_database::Database};
+use crate::{api_services::repo::ApiServiceRepository, database::Database};
 use actix_web::{web, Error, HttpRequest, HttpResponse, Result};
 use futures_util::stream::TryStreamExt;
 use reqwest::Client;
@@ -12,8 +12,7 @@ pub async fn forward(
     db: web::Data<Database>,
 ) -> Result<HttpResponse> {
 
-    let path = req.path().to_string();
-    let segments: Vec<&str> = path.splitn(4, '/').collect();
+    let segments: Vec<&str> = req.path().splitn(4, '/').collect();
 
     if segments.len() != 4 {
         return Ok(HttpResponse::BadRequest().finish());
@@ -26,7 +25,7 @@ pub async fn forward(
 
     let client = Client::new();
 
-    if let Some(service) = Database::get_service_by_name_and_version(&db, api_name, version).await {
+    if let Ok(service) = Database::get_service_by_name_and_version(&db, &api_name, &version).await {
         // Construct the full URL
         log::debug!("Configured Forward URL: {}", service.forward_url);
         let forward_url = format!("{}/{}", service.forward_url, endpoint);

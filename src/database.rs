@@ -8,14 +8,13 @@ pub struct Database {
     pub name: String
 }
 
-// pub trait Creatable: Into<Value> {}
-// pub trait Patchable: Into<Value> {}
-
 impl Database {
     pub async fn init(connection: &str, namespace: &str, name: &str) -> Result<Self, Error> {
 
         let db = Surreal::new::<SpeeDb>(connection).await?;
         db.use_ns(namespace).use_db(name).await?;
+
+
         
         Ok(Database{
             db,

@@ -1,10 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use surrealdb::sql::Thing;
 use validator::Validate;
 
 
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
-pub struct User {
+pub struct GatewayUser {
+    pub id: Option<Thing>,
     #[validate(length(min=4))]
     pub username: String,
     pub password_hash: String,
@@ -15,7 +17,16 @@ pub struct User {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
-pub struct AuthUser {
-    pub username: String,
-    pub scopes: Vec<String>
+pub struct PasswordResetRequest {
+    pub id: Option<Thing>,
+    pub user_id: String,
+    pub used: bool,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Validate)]
+pub struct PartialGatewayUserUpdate {
+    #[validate(length(min=4))]
+    pub username: Option<String>,
+    pub scopes: Option<Vec<String>>,
 }
