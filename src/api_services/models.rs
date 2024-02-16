@@ -17,6 +17,9 @@ pub struct ApiService {
     #[validate(length(min = 1))]
     pub version: String,
 
+    #[validate(length(min = 1))]
+    pub gateway_scopes: Vec<String>,
+
     #[validate]
     pub auth_details: Option<AuthDetails>,
 

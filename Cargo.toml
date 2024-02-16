@@ -6,11 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+actix-utils = "3.0.1"
 actix-web = { version = "4.5.1", features = ["rustls-0_22"] }
 async-trait = "0.1.77"
 chrono = "0.4.33"
 derive_more = "0.99.17"
 env_logger = "0.11.1"
+futures = "0.3.30"
 futures-util = "0.3.30"
 jsonwebtoken = { version = "9.2.0", features = ["use_pem"] }
 log = "0.4.20"

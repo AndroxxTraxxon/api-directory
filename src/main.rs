@@ -6,6 +6,7 @@ mod database;
 mod api_services;
 mod users;
 mod tlsconf;
+mod auth;
 
 
 #[actix_web::main]
@@ -18,11 +19,17 @@ async fn main() -> std::io::Result<()> {
         "api_directory",
         "services",
     )
-    .await
-    .expect("Error connecting to database");
-    users::repo::setup_user_table_events(&db)
         .await
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string().as_str()))?;
+        .expect("Error connecting to database");
+    api_services::repo::setup_service_table_events(&db)
+        .await
+        .map_err(|e: String| std::io::Error::new(std::io::ErrorKind::Other, e.to_string().as_str()))?;
+    users::repo::setup_user_table(&db)
+        .await
+        .map_err(|e: String| std::io::Error::new(std::io::ErrorKind::Other, e.to_string().as_str()))?;
+    auth::repo::setup_reset_request_table(&db)
+        .await
+        .map_err(|e: String| std::io::Error::new(std::io::ErrorKind::Other, e.to_string().as_str()))?;
 
     let db_data = web::Data::new(db);
     
@@ -34,6 +41,8 @@ async fn main() -> std::io::Result<()> {
             ))
             .app_data(db_data.clone())
             .configure(api_services::rest::web_setup)
+            .configure(auth::rest::web_setup)
+            .configure(users::rest::web_setup)
             .default_service(
                 // Register `forward` as the default service
                 web::route().to(forwarder::forward),

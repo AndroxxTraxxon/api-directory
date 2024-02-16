@@ -39,6 +39,13 @@ pub trait ApiServiceRepository {
     ) -> Result<ApiService, ApiServiceError>;
 }
 
+pub async fn setup_service_table_events(repo: &Database) -> Result<(), String> {
+    repo.define_index(API_SERVICE_TABLE, "serviceNamedVersionIndex", vec!["api_name", "version"], Some("UNIQUE")).await?;
+    repo.automate_created_date(API_SERVICE_TABLE).await?;
+    repo.automate_last_modified_date(API_SERVICE_TABLE).await?;
+    Ok(())
+}
+
 #[async_trait]
 impl ApiServiceRepository for Database {
     async fn get_all_services(repo: &Data<Database>) -> Result<Vec<ApiService>, ApiServiceError> {
@@ -55,6 +62,7 @@ impl ApiServiceRepository for Database {
         api_name: &String,
         version: &String,
     ) -> Result<ApiService, ApiServiceError> {
+        // Requires an index to enforce uniqueness on api name and version
         let mut response = repo.db
             .query(format!("\
                 SELECT * FROM {} \

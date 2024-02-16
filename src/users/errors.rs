@@ -19,7 +19,10 @@ pub enum UserError {
     #[error("Not Implemented: {0}")]
     NotImplemented(String),
     #[error("Database Error: {0}")]
-    DatabaseError(String)
+    DatabaseError(String),
+    #[error("Missing Authorization Scope: {0}")]
+    MissingScope(String),
+
 }
 
 impl ResponseError for UserError {
@@ -36,6 +39,7 @@ impl ResponseError for UserError {
             // UserError::ValidationError(_) => StatusCode::BAD_REQUEST,
             UserError::NotImplemented(_) => StatusCode::INTERNAL_SERVER_ERROR,
             UserError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            UserError::MissingScope(_) => StatusCode::FORBIDDEN,
         }
     }
 }
