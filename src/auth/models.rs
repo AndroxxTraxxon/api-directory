@@ -29,6 +29,7 @@ pub struct GatewayLoginCredentials {
     pub password: String
 }
 
+#[derive(Clone)]
 pub struct JwtConfig {
     pub decoding_key: DecodingKey,
     pub encoding_key: EncodingKey,

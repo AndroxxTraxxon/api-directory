@@ -1,16 +1,21 @@
-use std::{fs::File, io::BufReader};
+use std::{fs::File, io::{BufReader}};
+
 use rustls::pki_types::PrivateKeyDer;
 use rustls_pemfile::{certs, pkcs8_private_keys};
 
-pub fn load_tls_config() -> rustls::ServerConfig{
+use jsonwebtoken::{DecodingKey, EncodingKey, Algorithm};
+
+use crate::auth::models::JwtConfig;
+
+pub fn load_tls_config() -> std::io::Result<rustls::ServerConfig>{
     let config = rustls::ServerConfig::builder()
         .with_no_client_auth();
 
     let certificate_file = &mut BufReader::new(
-        File::open(".ssl.dev/snakeoil.pem").unwrap()
+        File::open(".ssl.dev/snakeoil.pem")?
     );
     let key_file = &mut BufReader::new(
-        File::open(".ssl.dev/snakeoil.key").unwrap()
+        File::open(".ssl.dev/snakeoil.key")?
     );
 
     let cert_chain = certs(certificate_file)
@@ -27,6 +32,19 @@ pub fn load_tls_config() -> rustls::ServerConfig{
         std::process::exit(1);
     }
 
-    config.with_single_cert(cert_chain, keys.remove(0)).unwrap()
+    Ok(config.with_single_cert(cert_chain, keys.remove(0)).unwrap())
 
+}
+
+pub fn load_jwt_config() -> std::io::Result<JwtConfig> {
+    Ok(JwtConfig {
+        algorithm: Algorithm::RS512,
+        decoding_key: DecodingKey::from_rsa_pem(
+            &std::fs::read(".ssl.dev/snakeoil.pubkey.pem")?
+        ).map_err(|e| std::io::Error::other(e))?,
+        encoding_key: EncodingKey::from_rsa_pem(
+            &std::fs::read(".ssl.dev/snakeoil.key")?
+        ).map_err(|e| std::io::Error::other(e))?,
+        issuer: String::from("apigateway.local"),
+    })
 }

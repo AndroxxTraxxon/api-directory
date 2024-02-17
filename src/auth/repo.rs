@@ -1,11 +1,10 @@
 use actix_web::web::Data;
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
 use serde::Serialize;
 
-use crate::database::Database;
+use crate::{database::Database, errors::GatewayError};
+use crate::errors::Result;
 use super::{
-    errors::AuthError,
     models::PasswordResetRequest,
 };
 use crate::users::models::GatewayUser;
@@ -20,24 +19,24 @@ pub trait UserAuthRepository {
         repo: &Data<Database>,
         username: &String,
         password: &String,
-    ) -> Result<GatewayUser, AuthError>;
+    ) -> Result<GatewayUser>;
 
     async fn request_password_reset(
         repo: &Data<Database>,
         username: &String,
-    ) -> Result<(), AuthError>;
+    ) -> Result<()>;
 
     async fn set_user_password_with_reset_token(
         repo: &Data<Database>,
         reset_token: &String,
         new_password: &String,
-    ) -> Result<(), AuthError>;
+    ) -> Result<()>;
 
     async fn set_user_password(
         repo: &Data<Database>,
         username: &String,
         new_password: &String,
-    ) -> Result<(), AuthError>;
+    ) -> Result<()>;
 }
 
 #[derive(Serialize)]
@@ -47,7 +46,7 @@ struct _UserAuthenticationParams<'_a, '_b> {
     pub password: &'_b String,
 }
 
-pub async fn setup_reset_request_table(repo: &Database) -> Result<(), String> {
+pub async fn setup_reset_request_table(repo: &Database) -> std::io::Result<()> {
     repo.automate_created_date(PASSWORD_RESET_TABLE).await?;
     repo.automate_last_modified_date(PASSWORD_RESET_TABLE).await?;
     Ok(())
@@ -60,7 +59,7 @@ impl UserAuthRepository for Database {
         repo: &Data<Database>,
         username: &String,
         password: &String,
-    ) -> Result<GatewayUser, AuthError> {
+    ) -> Result<GatewayUser> {
         let mut response = repo
             .db
             .query(
@@ -76,14 +75,14 @@ impl UserAuthRepository for Database {
                 password,
             })
             .await
-            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
         let query_result: Option<GatewayUser> = response
             .take(0)
-            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
 
         match query_result {
             Some(user) => Ok(user),
-            None => Err(AuthError::InvalidUsernameOrPassword(String::from(
+            None => Err(GatewayError::InvalidUsernameOrPassword(String::from(
                 "Could not authenticate with the provided username and password",
             ))),
         }
@@ -95,8 +94,8 @@ impl UserAuthRepository for Database {
         _repo: &Data<Database>,
         _reset_token: &String,
         _new_password: &String,
-    ) -> Result<(), AuthError> {
-        Err(AuthError::NotImplemented(String::from(
+    ) -> Result<()> {
+        Err(GatewayError::NotImplemented(String::from(
             "set_user_password_with_reset_token",
         )))
     }
@@ -104,8 +103,8 @@ impl UserAuthRepository for Database {
     async fn request_password_reset(
         _repo: &Data<Database>,
         _username: &String,
-    ) -> Result<(), AuthError> {
-        Err(AuthError::NotImplemented(String::from(
+    ) -> Result<()> {
+        Err(GatewayError::NotImplemented(String::from(
             "request_password_reset",
         )))
     }
@@ -114,7 +113,7 @@ impl UserAuthRepository for Database {
         _repo: &Data<Database>,
         _username: &String,
         _new_password: &String,
-    ) -> Result<(), AuthError> {
-        Err(AuthError::NotImplemented(String::from("set_user_password")))
+    ) -> Result<()> {
+        Err(GatewayError::NotImplemented(String::from("set_user_password")))
     }
 }

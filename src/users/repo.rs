@@ -5,33 +5,27 @@ use async_trait::async_trait;
 use serde::Serialize;
 use surrealdb::sql::{Id, Thing};
 
-use super::{
-    errors::UserError,
-    models::{GatewayUser, PartialGatewayUserUpdate},
-};
+use super::models::{GatewayUser, PartialGatewayUserUpdate};
 use crate::auth::models::PasswordResetRequest;
 use crate::database::Database;
+use crate::errors::{GatewayError, Result};
 
 const USER_TABLE: &str = "gateway_user";
 const PASSWORD_RESET_TABLE: &str = "password_reset_request";
 
 #[async_trait]
 pub trait UserRepository {
-    async fn register_user(
-        repo: &Data<Database>,
-        user: GatewayUser,
-    ) -> Result<GatewayUser, UserError>;
+    async fn register_user(repo: &Data<Database>, user: GatewayUser) -> Result<GatewayUser>;
 
-    async fn user_detail(repo: &Data<Database>, user_id: &String)
-        -> Result<GatewayUser, UserError>;
+    async fn user_detail(repo: &Data<Database>, user_id: &String) -> Result<GatewayUser>;
 
     async fn update_user(
         _repo: &Data<Database>,
         _user_id: &String,
         _user: &PartialGatewayUserUpdate,
-    ) -> Result<GatewayUser, UserError>;
+    ) -> Result<GatewayUser>;
 
-    async fn list_users(repo: &Data<Database>) -> Result<Vec<GatewayUser>, UserError>;
+    async fn list_users(repo: &Data<Database>) -> Result<Vec<GatewayUser>>;
 }
 
 #[derive(Serialize)]
@@ -40,7 +34,7 @@ struct _UserIdQueryParams<'_a, '_b> {
     pub user_id: &'_b String,
 }
 
-pub async fn setup_user_table(repo: &Database) -> Result<(), String> {
+pub async fn setup_user_table(repo: &Database) -> std::io::Result<()>{
     repo.define_index(
         USER_TABLE,
         "usernameIndex",
@@ -53,12 +47,9 @@ pub async fn setup_user_table(repo: &Database) -> Result<(), String> {
 
 #[async_trait]
 impl UserRepository for Database {
-    async fn register_user(
-        repo: &Data<Database>,
-        new_user: GatewayUser,
-    ) -> Result<GatewayUser, UserError> {
+    async fn register_user(repo: &Data<Database>, new_user: GatewayUser) -> Result<GatewayUser> {
         // First, validate the GatewayUser
-        // new_user.validate().map_err(|e| UserError::ValidationError(e.to_string()))?;
+        // new_user.validate().map_err(|e| GatewayError::ValidationError(e.to_string()))?;
 
         // Insert the GatewayUser into the database
         let inserted_user: GatewayUser = repo
@@ -66,7 +57,7 @@ impl UserRepository for Database {
             .create(USER_TABLE)
             .content(new_user)
             .await
-            .map_err(|e| UserError::DatabaseError(e.to_string()))?
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?
             .remove(0);
 
         // Generate a PasswordResetRequest for the user
@@ -93,7 +84,7 @@ impl UserRepository for Database {
                 .create(PASSWORD_RESET_TABLE)
                 .content(password_reset_request)
                 .await
-                .map_err(|e| UserError::DatabaseError(e.to_string()))?
+                .map_err(|e| GatewayError::DatabaseError(e.to_string()))?
                 .remove(0);
             log::info!(
                 "Created Password Reset request {} for user {}",
@@ -102,17 +93,14 @@ impl UserRepository for Database {
             );
             Ok(inserted_user)
         } else {
-            Err(UserError::DatabaseError(format!(
+            Err(GatewayError::DatabaseError(format!(
                 "Unexpected User Id: {:?}",
                 inserted_user.id.unwrap().id
             )))
         }
     }
 
-    async fn user_detail(
-        repo: &Data<Database>,
-        user_id: &String,
-    ) -> Result<GatewayUser, UserError> {
+    async fn user_detail(repo: &Data<Database>, user_id: &String) -> Result<GatewayUser> {
         let mut response = repo
             .db
             .query(
@@ -124,14 +112,14 @@ impl UserRepository for Database {
                 user_id,
             })
             .await
-            .map_err(|e| UserError::DatabaseError(e.to_string()))?;
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
         let query_result: Option<GatewayUser> = response
             .take(0)
-            .map_err(|e| UserError::DatabaseError(e.to_string()))?;
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
 
         match query_result {
             Some(user) => Ok(user),
-            None => Err(UserError::UserNotFound(String::from(
+            None => Err(GatewayError::UserNotFound(String::from(
                 "Could not authenticate with the provided username and password",
             ))),
         }
@@ -141,11 +129,11 @@ impl UserRepository for Database {
         _repo: &Data<Database>,
         _user_id: &String,
         _user: &PartialGatewayUserUpdate,
-    ) -> Result<GatewayUser, UserError> {
-        Err(UserError::NotImplemented(String::from("update_user")))
+    ) -> Result<GatewayUser> {
+        Err(GatewayError::NotImplemented(String::from("update_user")))
     }
 
-    async fn list_users(_repo: &Data<Database>) -> Result<Vec<GatewayUser>, UserError> {
-        Err(UserError::NotImplemented(String::from("list_users")))
+    async fn list_users(_repo: &Data<Database>) -> Result<Vec<GatewayUser>> {
+        Err(GatewayError::NotImplemented(String::from("list_users")))
     }
 }

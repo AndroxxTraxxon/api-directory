@@ -6,11 +6,12 @@ use actix_web::{
 };
 
 use super::{
-    errors::UserError,
     models::{GatewayUser, PartialGatewayUserUpdate},
     repo::UserRepository,
 };
+
 use crate::auth::rest::validate_jwt_for_scopes;
+use crate::errors::{Result};
 use crate::database::Database;
 
 // Intermediate function to configure services
@@ -25,17 +26,15 @@ pub fn web_setup(cfg: &mut ServiceConfig) {
 }
 
 #[get("/users")]
-async fn list_users(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<GatewayUser>>, UserError> {
-    validate_jwt_for_scopes(&req, &vec!["admin"])
-        .map_err(|e| UserError::MissingScope(e.to_string()))?;
+async fn list_users(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<GatewayUser>>> {
+    validate_jwt_for_scopes(&req, &vec!["admin"])?;
     let user_list = Database::list_users(&repo).await?;
     Ok(Json(user_list))
 }
 
 #[post("/users")]
-async fn register_user(req: HttpRequest, repo: Data<Database>, user_json: Json<GatewayUser>) -> Result<Json<GatewayUser>, UserError> {
-    validate_jwt_for_scopes(&req, &vec!["admin"])
-        .map_err(|e| UserError::MissingScope(e.to_string()))?;
+async fn register_user(req: HttpRequest, repo: Data<Database>, user_json: Json<GatewayUser>) -> Result<Json<GatewayUser>> {
+    validate_jwt_for_scopes(&req, &vec!["admin"])?;
     let user_data = user_json.into_inner();
     let registered_user = Database::register_user(&repo, user_data).await?;
     Ok(Json(registered_user))
@@ -51,9 +50,8 @@ async fn user_detail(
     req: HttpRequest,
     repo: Data<Database>,
     path_params: Path<UserIdPathParams>,
-) -> Result<Json<GatewayUser>, UserError> {
-    validate_jwt_for_scopes(&req, &vec!["admin", "user-readonly"])
-        .map_err(|e| UserError::MissingScope(e.to_string()))?;
+) -> Result<Json<GatewayUser>> {
+    validate_jwt_for_scopes(&req, &vec!["admin", "user-readonly"])?;
     let user_id = path_params.into_inner().user_id;
     let user = Database::user_detail(&repo, &user_id).await?;
     Ok(Json(user))
@@ -65,9 +63,8 @@ async fn update_user(
     repo: Data<Database>,
     path_params: Path<UserIdPathParams>,
     user_form: Json<PartialGatewayUserUpdate>,
-) -> Result<Json<GatewayUser>, UserError> {
-    validate_jwt_for_scopes(&req, &vec!["admin"])
-        .map_err(|e| UserError::MissingScope(e.to_string()))?;
+) -> Result<Json<GatewayUser>> {
+    validate_jwt_for_scopes(&req, &vec!["admin"])?;
     let user_id = path_params.into_inner().user_id;
     let user = user_form.into_inner();
     let updated_user = Database::update_user(&repo, &user_id, &user).await?;

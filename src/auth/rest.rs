@@ -1,4 +1,5 @@
-use super::{errors::AuthError, models::{GatewayLoginCredentials, JwtConfig}, repo::UserAuthRepository};
+use super::{models::{GatewayLoginCredentials, JwtConfig}, repo::UserAuthRepository};
+use crate::errors::{GatewayError, Result};
 use crate::database::Database;
 use surrealdb::sql::{Id, Thing};
 use actix_web::{
@@ -7,11 +8,10 @@ use actix_web::{
     HttpRequest
 };
 use std::time::SystemTime;
-use jsonwebtoken::{decode, encode, Algorithm, Validation, Header};
+use jsonwebtoken::{decode, encode, Validation, Header};
 use super::models::GatewayUserClaims;
 
 const GATEWAY_JWT_ISSUER: &str = "apigateway.local";
-const JWT_SIGNATURE_ALGO: Algorithm = Algorithm::RS512;
 
 // Intermediate function to configure services
 pub fn web_setup(cfg: &mut ServiceConfig) {
@@ -23,7 +23,7 @@ async fn authenticate_user(
     req: HttpRequest, 
     repo: Data<Database>,
     credential_form: Json<GatewayLoginCredentials>,
-) -> Result<String, AuthError> {
+) -> Result<String> {
     let credentials = credential_form.into_inner();
     let user = Database::authenticate_user(&repo, &credentials.username, &credentials.password)
         .await?;
@@ -42,16 +42,16 @@ async fn authenticate_user(
         };
         let config: &Data<JwtConfig> = &req.app_data().unwrap();
         encode(&Header::default(), &claims, &config.encoding_key)
-            .map_err(|e| AuthError::TokenEncodeError(e.to_string()))
+            .map_err(|e| GatewayError::TokenEncodeError(e.to_string()))
     } else {
-        Err(AuthError::TokenEncodeError(String::from("Unable to build Auth Token")))
+        Err(GatewayError::TokenEncodeError(String::from("Unable to build Auth Token")))
     }
 }
 
 pub fn validate_jwt_for_scopes<'a>(
     req: &'a HttpRequest,
     scopes: &Vec<&str>,
-) -> Result<GatewayUserClaims, AuthError> {
+) -> Result<GatewayUserClaims> {
     let jwt_config = req.app_data::<Data<JwtConfig>>().unwrap();
     let token = match req.headers().get("Authorization") {
         Some(auth_header) => {
@@ -63,12 +63,11 @@ pub fn validate_jwt_for_scopes<'a>(
             Some(parts[1])
         }
         None => None,
-    }
-    .unwrap();
+    }.ok_or(GatewayError::Unauthorized("Missing  'Bearer' token from 'Authorization' header".to_string()))?;
     let mut validation = Validation::new(jwt_config.algorithm);
     validation.set_audience(&scopes.iter().map(AsRef::as_ref).collect::<Vec<&str>>());
     validation.set_issuer(&[jwt_config.issuer.as_str()]);
     decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
         .and_then(|token_data| Ok(token_data.claims))
-        .map_err(|e| AuthError::TokenDecodeError(e.to_string()))
+        .map_err(|e| GatewayError::TokenDecodeError(e.to_string()))
 }
