@@ -4,7 +4,7 @@ use actix_web::web::Data;
 use async_trait::async_trait;
 use serde::Serialize;
 use surrealdb::opt::PatchOp;
-use surrealdb::sql::{Id, Thing};
+use surrealdb::sql::{Datetime, Id, Thing};
 
 use super::models::PasswordResetRequest;
 use crate::database::Database;
@@ -28,6 +28,7 @@ pub trait UserAuthRepository {
     async fn set_user_password_with_reset_token(
         repo: &Data<Database>,
         reset_token: &String,
+        username: &String,
         new_password: &String,
     ) -> Result<()>;
 
@@ -88,7 +89,11 @@ impl UserAuthRepository for Database {
         user_id: &String,
         new_password: &String,
     ) -> Result<()> {
-        log::debug!("Hashing password [ {} ] for user [ {} ]", new_password, user_id);
+        log::debug!(
+            "Hashing password [ {} ] for user [ {} ]",
+            new_password,
+            user_id
+        );
         let pass_hash: Option<String> = repo
             .db
             .query("RETURN crypto::argon2::generate($password)")
@@ -107,6 +112,7 @@ impl UserAuthRepository for Database {
         repo.db
             .update((USER_TABLE, user_id))
             .patch(PatchOp::replace("/password_hash", &pass_hash))
+            .patch(PatchOp::replace("/password_reset_at", Datetime::default()))
             .await
             .map_err(|e| GatewayError::DatabaseError(e.to_string()))?
             .ok_or(GatewayError::NotFound(
@@ -122,6 +128,7 @@ impl UserAuthRepository for Database {
     async fn set_user_password_with_reset_token(
         repo: &Data<Database>,
         reset_token: &String,
+        username: &String,
         new_password: &String,
     ) -> Result<()> {
         let reset_request: PasswordResetRequest = repo
@@ -129,20 +136,37 @@ impl UserAuthRepository for Database {
             .select((PASSWORD_RESET_TABLE, reset_token))
             .await
             .map_err(|e| GatewayError::DatabaseError(e.to_string()))?
-            .ok_or(GatewayError::NotFound(
-                String::from("Password Reset Request"),
-                String::from("Invalid Password Reset token"),
-            ))?;
+            .ok_or(GatewayError::BadRequest("Invalid Password Reset Request".to_string()))?;
+        
+        let user: GatewayUser = repo
+            .db
+            .select((USER_TABLE, &reset_request.user_id))
+            .await
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?
+            .ok_or(GatewayError::BadRequest("Invalid Password Reset Request".to_string()))?;
+
+        if user.username.ne(username) {
+            return Err(GatewayError::BadRequest("Invalid Password Reset Request".to_string()))
+        }
+        
         let now = time::SystemTime::now()
             .duration_since(time::UNIX_EPOCH)
             .map_err(|e| GatewayError::SystemError(e.to_string()))?
             .as_secs();
         if reset_request.expires_at >= now {
-            return Err(GatewayError::AccessDenied(
+            return Err(GatewayError::BadRequest(
                 "Password Reset Request has expired.".to_string(),
             ));
         }
-        Database::set_user_password(repo, &reset_request.user_id, new_password).await
+        Database::set_user_password(repo, &reset_request.user_id, new_password).await?;
+        repo.db
+            .update::<Option<PasswordResetRequest>>((PASSWORD_RESET_TABLE, reset_token))
+            .patch(PatchOp::replace("/used", true))
+            .patch(PatchOp::replace("/last_modified", Datetime::default()))
+            .await
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
+
+        Ok(())
     }
 
     async fn request_password_reset(repo: &Data<Database>, username: &String) -> Result<()> {
@@ -181,6 +205,7 @@ impl UserAuthRepository for Database {
                     expires_at: now + REQUEST_LIFETIME,
                     user_id: user_id.clone(),
                     used: false,
+                    last_modified: Datetime::default(),
                 })
                 .await
                 .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
@@ -189,7 +214,11 @@ impl UserAuthRepository for Database {
                 "Unable to create Password Reset Request".to_string(),
             ))?;
 
-            log::debug!("New password reset {} created for user {}", reset_request.id.as_ref().unwrap().id.to_string(), user_id.clone());
+            log::debug!(
+                "New password reset {} created for user {}",
+                reset_request.id.as_ref().unwrap().id.to_string(),
+                user_id.clone()
+            );
         } else {
             return Err(GatewayError::DatabaseError(
                 "Unknown User ID Format for selected User".to_string(),

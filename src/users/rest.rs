@@ -10,7 +10,7 @@ use super::{
     repo::UserRepository,
 };
 
-use crate::auth::rest::validate_jwt_for_scopes;
+use crate::auth::rest::validate_jwt;
 use crate::database::Database;
 use crate::errors::Result;
 
@@ -27,7 +27,7 @@ pub fn web_setup(cfg: &mut ServiceConfig) {
 
 #[get("/users")]
 async fn list_users(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<GatewayUser>>> {
-    validate_jwt_for_scopes(&req, &vec!["admin"])?;
+    validate_jwt(&req, Some(&vec!["admin"]))?;
     let user_list = Database::list_users(&repo).await?;
     Ok(Json(user_list))
 }
@@ -38,10 +38,20 @@ async fn register_user(
     repo: Data<Database>,
     user_json: Json<GatewayUser>,
 ) -> Result<Json<GatewayUser>> {
-    validate_jwt_for_scopes(&req, &vec!["admin"])?;
+    validate_jwt(&req, Some(&vec!["admin"]))?;
     let user_data = user_json.into_inner();
     let registered_user = Database::register_user(&repo, user_data).await?;
     Ok(Json(registered_user))
+}
+
+#[post("/users/me")]
+async fn current_user(
+    req: HttpRequest,
+    repo: Data<Database>,
+) -> Result<Json<GatewayUser>> {
+    let claims = validate_jwt(&req, None)?;
+    let user = Database::user_detail(&repo, &claims.sub_id).await?;
+    Ok(Json(user))
 }
 
 #[derive(Deserialize)]
@@ -55,7 +65,7 @@ async fn user_detail(
     repo: Data<Database>,
     path_params: Path<UserIdPathParams>,
 ) -> Result<Json<GatewayUser>> {
-    validate_jwt_for_scopes(&req, &vec!["admin", "user-readonly"])?;
+    validate_jwt(&req, Some(&vec!["admin", "user-readonly"]))?;
     let user_id = path_params.into_inner().user_id;
     let user = Database::user_detail(&repo, &user_id).await?;
     Ok(Json(user))
@@ -68,7 +78,7 @@ async fn update_user(
     path_params: Path<UserIdPathParams>,
     user_form: Json<PartialGatewayUserUpdate>,
 ) -> Result<Json<GatewayUser>> {
-    validate_jwt_for_scopes(&req, &vec!["admin"])?;
+    validate_jwt(&req, Some(&vec!["admin"]))?;
     let user_id = path_params.into_inner().user_id;
     let user = user_form.into_inner();
     let updated_user = Database::update_user(&repo, &user_id, &user).await?;

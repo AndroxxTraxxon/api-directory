@@ -1,15 +1,21 @@
-use super::{models::{GatewayLoginCredentials, JwtConfig}, repo::UserAuthRepository};
-use crate::errors::{GatewayError, Result};
-use crate::database::Database;
-use surrealdb::sql::{Id, Thing};
-use actix_web::{
-    post,
-    web::{scope, Data, Json, ServiceConfig},
-    HttpRequest
-};
-use std::time::SystemTime;
-use jsonwebtoken::{decode, encode, Validation, Header};
 use super::models::GatewayUserClaims;
+use super::{
+    models::{GatewayLoginCredentials, JwtConfig, PasswordForm, RequestIdParams},
+    repo::UserAuthRepository,
+};
+use crate::database::Database;
+use crate::{
+    auth::models::UserForm,
+    errors::{GatewayError, Result},
+};
+use actix_web::{
+    patch, post,
+    web::{scope, Data, Json, Path, ServiceConfig},
+    HttpRequest, HttpResponse,
+};
+use jsonwebtoken::{decode, encode, Header, Validation};
+use std::time::SystemTime;
+use surrealdb::sql::{Id, Thing};
 
 const GATEWAY_JWT_ISSUER: &str = "apigateway.local";
 
@@ -20,15 +26,22 @@ pub fn web_setup(cfg: &mut ServiceConfig) {
 
 #[post("/login")]
 async fn authenticate_user(
-    req: HttpRequest, 
+    req: HttpRequest,
     repo: Data<Database>,
     credential_form: Json<GatewayLoginCredentials>,
 ) -> Result<String> {
     let credentials = credential_form.into_inner();
-    let user = Database::authenticate_user(&repo, &credentials.username, &credentials.password)
-        .await?;
-    if let Some(Thing{tb: _, id: Id::String(user_id)}) = user.id {
-        let now_ts = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+    let user =
+        Database::authenticate_user(&repo, &credentials.username, &credentials.password).await?;
+    if let Some(Thing {
+        tb: _,
+        id: Id::String(user_id),
+    }) = user.id
+    {
+        let now_ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let duration = 24 * 60 * 60;
         let claims = GatewayUserClaims {
             // Issuer (us/apigateway.local)
@@ -44,14 +57,53 @@ async fn authenticate_user(
         encode(&Header::default(), &claims, &config.encoding_key)
             .map_err(|e| GatewayError::TokenEncodeError(e.to_string()))
     } else {
-        Err(GatewayError::TokenEncodeError(String::from("Unable to build Auth Token")))
+        Err(GatewayError::TokenEncodeError(String::from(
+            "Unable to build Auth Token",
+        )))
     }
 }
 
-pub fn validate_jwt_for_scopes<'a>(
-    req: &'a HttpRequest,
-    scopes: &Vec<&str>,
-) -> Result<GatewayUserClaims> {
+#[patch("/set-password")]
+async fn set_password(
+    req: HttpRequest,
+    repo: Data<Database>,
+    password_form: Json<PasswordForm>,
+) -> Result<HttpResponse> {
+    let user_id = validate_jwt(&req, None)?.sub_id;
+    let password = password_form.into_inner().password;
+    Database::set_user_password(&repo, &user_id, &password).await?;
+    Ok(HttpResponse::NoContent().finish())
+}
+
+#[post("/request-password-reset")]
+async fn request_password_reset(
+    repo: Data<Database>,
+    user_form: Json<UserForm>,
+) -> Result<HttpResponse> {
+    let username = user_form.into_inner().username;
+    Database::request_password_reset(&repo, &username).await?;
+    Ok(HttpResponse::NoContent().finish())
+}
+
+#[patch("/reset-password/{request_id}")]
+async fn reset_password(
+    repo: Data<Database>,
+    credential_form: Json<GatewayLoginCredentials>,
+    path_params: Path<RequestIdParams>,
+) -> Result<HttpResponse> {
+    let credentials = credential_form.into_inner();
+    let request_id = path_params.into_inner().request_id;
+    Database::set_user_password_with_reset_token(
+        &repo,
+        &request_id,
+        &credentials.username,
+        &credentials.password,
+    )
+    .await?;
+    Ok(HttpResponse::NoContent().finish())
+}
+
+pub fn validate_jwt(req: &HttpRequest, scopes: Option<&Vec<&str>>) -> Result<GatewayUserClaims> {
     let jwt_config = req.app_data::<Data<JwtConfig>>().unwrap();
     let token = match req.headers().get("Authorization") {
         Some(auth_header) => {
@@ -63,9 +115,17 @@ pub fn validate_jwt_for_scopes<'a>(
             Some(parts[1])
         }
         None => None,
-    }.ok_or(GatewayError::Unauthorized("Missing  'Bearer' token from 'Authorization' header".to_string()))?;
+    }
+    .ok_or(GatewayError::Unauthorized(
+        "Missing 'Bearer' token from 'Authorization' header".to_string(),
+    ))?;
+
     let mut validation = Validation::new(jwt_config.algorithm);
-    validation.set_audience(&scopes.iter().map(AsRef::as_ref).collect::<Vec<&str>>());
+    if let Some(audience) = scopes {
+        validation.set_audience(audience);
+    } else {
+        validation.validate_aud = false;
+    }
     validation.set_issuer(&[jwt_config.issuer.as_str()]);
     decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
         .and_then(|token_data| Ok(token_data.claims))

@@ -2,7 +2,7 @@
 use crate::{
     api_services::repo::ApiServiceRepository,
     database::Database,
-    auth::rest::validate_jwt_for_scopes,
+    auth::rest::validate_jwt,
 };
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use futures_util::stream::TryStreamExt;
@@ -32,7 +32,7 @@ pub async fn forward(
     if let Ok(service) = Database::get_service_by_name_and_version(&db, &api_name, &version).await {
         // Construct the full URL
         let scopes: Vec<&str> = service.gateway_scopes.iter().map(AsRef::as_ref).collect();
-        validate_jwt_for_scopes(&req, &scopes)
+        validate_jwt(&req, Some(&scopes))
             .map_err(|e| actix_web::error::ErrorForbidden(e.to_string()))?;
         
         log::debug!("Configured Forward URL: {}", service.forward_url);

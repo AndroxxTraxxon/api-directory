@@ -114,7 +114,8 @@ impl ApiServiceRepository for Database {
         partial_update: &PartialApiServiceUpdate,
     ) -> Result<ApiService> {
         // Serialize the PartialApiServiceUpdate struct to a serde_json Value
-        let update_data: Value = to_value(partial_update).unwrap(); // Handle this unwrap more gracefully in production code
+        let update_data: Value =
+            to_value(partial_update).map_err(|e| GatewayError::MissingData(e.to_string()))?; // Handle this unwrap more gracefully in production code
 
         if let Value::Object(fields) = update_data {
             // Start constructing the update query for the specific service ID

@@ -1,14 +1,10 @@
-use actix_web::{
-    http::StatusCode,
-    HttpResponse, ResponseError
-};
+use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 
 use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GatewayError {
-
     /**
      * API Service Errors
      */
@@ -22,13 +18,12 @@ pub enum GatewayError {
     // Uncomment and adapt these as needed
     // #[error("Registration failure: {0}")]
     // RegistrationFailure(String),
-    
+
     // #[error("Duplicate service: {0}")]
     // DuplicateService(String),
-    
     #[error("Not authorized: {0}")]
     Unauthorized(String),
-    
+
     #[error("Database error: {0}")]
     DatabaseError(String),
 
@@ -39,7 +34,7 @@ pub enum GatewayError {
      * Auth Errors
      */
 
-     #[error("Invalid Username or Password {0}")]
+    #[error("Invalid Username or Password {0}")]
     InvalidUsernameOrPassword(String),
     // #[error("There was an error authenticating: {0}")]
     // UnableToAuthenticate(String),
@@ -49,12 +44,14 @@ pub enum GatewayError {
     TokenEncodeError(String),
     // #[error("Authentication Configuration error: {0}")]
     // ConfigError(String)
-
-    #[error("Missing Authorization Scope: {0}")]
-    AccessDenied(String),
+    // #[error("Missing Authorization Scope: {0}")]
+    // AccessDenied(String),
 
     #[error("System Error: {0}")]
-    SystemError(String)
+    SystemError(String),
+
+    #[error("Bad Request: {0}")]
+    BadRequest(String),
 }
 
 impl ResponseError for GatewayError {
@@ -68,6 +65,7 @@ impl ResponseError for GatewayError {
             GatewayError::NotFound(_, _) => StatusCode::NOT_FOUND,
             GatewayError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             GatewayError::MissingData(_) => StatusCode::BAD_REQUEST,
+            GatewayError::BadRequest(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

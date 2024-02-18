@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use actix_web::web::Data;
 use async_trait::async_trait;
 use serde::Serialize;
-use surrealdb::sql::{Id, Thing};
+use surrealdb::sql::{Datetime, Id, Thing};
 
 use super::models::{GatewayUser, PartialGatewayUserUpdate};
 use crate::auth::models::PasswordResetRequest;
@@ -20,9 +20,9 @@ pub trait UserRepository {
     async fn user_detail(repo: &Data<Database>, user_id: &String) -> Result<GatewayUser>;
 
     async fn update_user(
-        _repo: &Data<Database>,
-        _user_id: &String,
-        _user: &PartialGatewayUserUpdate,
+        repo: &Data<Database>,
+        user_id: &String,
+        user: &PartialGatewayUserUpdate,
     ) -> Result<GatewayUser>;
 
     async fn list_users(repo: &Data<Database>) -> Result<Vec<GatewayUser>>;
@@ -34,7 +34,7 @@ struct _UserIdQueryParams<'_a, '_b> {
     pub user_id: &'_b String,
 }
 
-pub async fn setup_user_table(repo: &Database) -> std::io::Result<()>{
+pub async fn setup_user_table(repo: &Database) -> std::io::Result<()> {
     repo.define_index(
         USER_TABLE,
         "usernameIndex",
@@ -77,6 +77,7 @@ impl UserRepository for Database {
                 user_id: user_id.clone(), // Assuming `id` is some form of unique identifier
                 used: false,
                 expires_at: now_ts + (24 * 60 * 60), // expires in 1 day
+                last_modified: Datetime::default(),
             };
 
             let password_reset: PasswordResetRequest = repo
@@ -119,9 +120,10 @@ impl UserRepository for Database {
 
         match query_result {
             Some(user) => Ok(user),
-            None => Err(GatewayError::NotFound(String::from(USER_TABLE), String::from(
-                "Could not find a user with the specified ID",
-            ))),
+            None => Err(GatewayError::NotFound(
+                String::from(USER_TABLE),
+                String::from("Could not find a user with the specified ID"),
+            )),
         }
     }
 

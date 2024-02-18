@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use jsonwebtoken::{Algorithm, EncodingKey, DecodingKey};
-use surrealdb::sql::Thing;
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey};
+use serde::{Deserialize, Serialize};
+use surrealdb::sql::{Datetime, Thing};
 use validator::Validate;
 // Define a struct to represent your user record
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -26,7 +26,7 @@ pub struct GatewayUserClaims {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GatewayLoginCredentials {
     pub username: String,
-    pub password: String
+    pub password: String,
 }
 
 #[derive(Clone)]
@@ -43,4 +43,20 @@ pub struct PasswordResetRequest {
     pub user_id: String,
     pub used: bool,
     pub expires_at: u64,
+    pub last_modified: Datetime,
+}
+
+#[derive(Deserialize)]
+pub struct PasswordForm {
+    pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct UserForm {
+    pub username: String,
+}
+
+#[derive(Deserialize)]
+pub struct RequestIdParams {
+    pub request_id: String,
 }
