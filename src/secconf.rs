@@ -40,7 +40,7 @@ pub fn load_jwt_config() -> std::io::Result<JwtConfig> {
     Ok(JwtConfig {
         algorithm: Algorithm::RS512,
         decoding_key: DecodingKey::from_rsa_pem(
-            &std::fs::read(".ssl.dev/snakeoil.pubkey.pem")?
+            &std::fs::read(".ssl.dev/snakeoil.pem")?
         ).map_err(|e| std::io::Error::other(e))?,
         encoding_key: EncodingKey::from_rsa_pem(
             &std::fs::read(".ssl.dev/snakeoil.key")?

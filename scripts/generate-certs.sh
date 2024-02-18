@@ -18,5 +18,3 @@ openssl req -new -newkey rsa:4096 -nodes -keyout "$SSL_DIR/$CERT_FILE_PREFIX.key
 
 # Sign the certificate signing request with the private key to create the certificate
 openssl x509 -req -sha256 -days 365 -in "$SSL_DIR/$CERT_FILE_PREFIX.csr" -signkey "$SSL_DIR/$CERT_FILE_PREFIX.key" -out "$SSL_DIR/$CERT_FILE_PREFIX.pem"
-
-openssl rsa -in "$SSL_DIR/$CERT_FILE_PREFIX.key" -outform pem -out "$SSL_DIR/$CERT_FILE_PREFIX.pubkey.pem" -pubout
