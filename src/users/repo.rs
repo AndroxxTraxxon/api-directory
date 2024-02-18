@@ -10,7 +10,7 @@ use crate::auth::models::PasswordResetRequest;
 use crate::database::Database;
 use crate::errors::{GatewayError, Result};
 
-const USER_TABLE: &str = "gateway_user";
+pub const USER_TABLE: &str = "gateway_user";
 const PASSWORD_RESET_TABLE: &str = "password_reset_request";
 
 #[async_trait]
@@ -102,29 +102,14 @@ impl UserRepository for Database {
     }
 
     async fn user_detail(repo: &Data<Database>, user_id: &String) -> Result<GatewayUser> {
-        let mut response = repo
-            .db
-            .query(
-                "SELECT * FROM type::table($table) \
-                WHERE id = $user_id",
-            )
-            .bind(_UserIdQueryParams {
-                table: USER_TABLE,
-                user_id,
-            })
+        repo.db
+            .select((USER_TABLE, user_id))
             .await
-            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
-        let query_result: Option<GatewayUser> = response
-            .take(0)
-            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?;
-
-        match query_result {
-            Some(user) => Ok(user),
-            None => Err(GatewayError::NotFound(
-                String::from(USER_TABLE),
-                String::from("Could not find a user with the specified ID"),
-            )),
-        }
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))?
+            .ok_or(GatewayError::NotFound(
+                "User".to_string(),
+                "Could not find a user with the specified ID".to_string(),
+            ))
     }
 
     async fn update_user(

@@ -17,22 +17,25 @@ use crate::errors::Result;
 // Intermediate function to configure services
 pub fn web_setup(cfg: &mut ServiceConfig) {
     cfg.service(
-        scope("/cfg/v1")
+        scope("/cfg/v1/users")
             .service(list_users)
             .service(register_user)
+            // Ensure current user is registered before user_detail
+            // So that `currentuser` doesn't get captured as a UserID
+            .service(current_user)
             .service(user_detail)
             .service(update_user),
     );
 }
 
-#[get("/users")]
+#[get("/")]
 async fn list_users(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<GatewayUser>>> {
     validate_jwt(&req, Some(&vec!["admin"]))?;
     let user_list = Database::list_users(&repo).await?;
     Ok(Json(user_list))
 }
 
-#[post("/users")]
+#[post("/")]
 async fn register_user(
     req: HttpRequest,
     repo: Data<Database>,
@@ -44,11 +47,8 @@ async fn register_user(
     Ok(Json(registered_user))
 }
 
-#[post("/users/me")]
-async fn current_user(
-    req: HttpRequest,
-    repo: Data<Database>,
-) -> Result<Json<GatewayUser>> {
+#[get("/current")]
+async fn current_user(req: HttpRequest, repo: Data<Database>) -> Result<Json<GatewayUser>> {
     let claims = validate_jwt(&req, None)?;
     let user = Database::user_detail(&repo, &claims.sub_id).await?;
     Ok(Json(user))
@@ -59,7 +59,7 @@ struct UserIdPathParams {
     pub user_id: String,
 }
 
-#[get("/users/{user_id}")]
+#[get("/{user_id}")]
 async fn user_detail(
     req: HttpRequest,
     repo: Data<Database>,
@@ -71,7 +71,7 @@ async fn user_detail(
     Ok(Json(user))
 }
 
-#[patch("/users/{user_id}")]
+#[patch("/{user_id}")]
 async fn update_user(
     req: HttpRequest,
     repo: Data<Database>,

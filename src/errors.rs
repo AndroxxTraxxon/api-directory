@@ -34,7 +34,7 @@ pub enum GatewayError {
      * Auth Errors
      */
 
-    #[error("Invalid Username or Password {0}")]
+    #[error("Invalid Username or Password: {0}")]
     InvalidUsernameOrPassword(String),
     // #[error("There was an error authenticating: {0}")]
     // UnableToAuthenticate(String),
@@ -66,6 +66,7 @@ impl ResponseError for GatewayError {
             GatewayError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             GatewayError::MissingData(_) => StatusCode::BAD_REQUEST,
             GatewayError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            GatewayError::InvalidUsernameOrPassword(_) => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

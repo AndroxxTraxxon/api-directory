@@ -4,6 +4,11 @@ use surrealdb::engine::local::{Db, SpeeDb};
 use surrealdb;
 use std::io;
 
+pub const USER_TABLE: &str = "gateway_user";
+pub const PASSWORD_RESET_TABLE: &str = "password_reset_request";
+pub const API_SERVICE_TABLE: &str = "service";
+
+
 #[derive(Clone)]
 pub struct Database {
     pub db: surrealdb::Surreal<Db>,

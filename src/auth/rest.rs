@@ -21,7 +21,13 @@ const GATEWAY_JWT_ISSUER: &str = "apigateway.local";
 
 // Intermediate function to configure services
 pub fn web_setup(cfg: &mut ServiceConfig) {
-    cfg.service(scope("/auth/v1").service(authenticate_user));
+    cfg.service(
+        scope("/auth/v1")
+            .service(authenticate_user)
+            .service(set_password)
+            .service(request_password_reset)
+            .service(reset_password),
+    );
 }
 
 #[post("/login")]
@@ -47,15 +53,22 @@ async fn authenticate_user(
             // Issuer (us/apigateway.local)
             iss: String::from(GATEWAY_JWT_ISSUER),
             sub: user.username,
-            sub_id: user_id,
+            sub_id: user_id.clone(),
             aud: user.scopes,
             exp: now_ts + duration,
             iat: now_ts,
             nbf: now_ts,
         };
         let config: &Data<JwtConfig> = &req.app_data().unwrap();
-        encode(&Header::default(), &claims, &config.encoding_key)
-            .map_err(|e| GatewayError::TokenEncodeError(e.to_string()))
+        let token = encode(
+            &Header::new(config.algorithm),
+            &claims,
+            &config.encoding_key,
+        )
+        .map_err(|e| GatewayError::TokenEncodeError(e.to_string()))?;
+
+        Database::set_last_login(&repo, &user_id).await?;
+        Ok(token)
     } else {
         Err(GatewayError::TokenEncodeError(String::from(
             "Unable to build Auth Token",
@@ -127,7 +140,9 @@ pub fn validate_jwt(req: &HttpRequest, scopes: Option<&Vec<&str>>) -> Result<Gat
         validation.validate_aud = false;
     }
     validation.set_issuer(&[jwt_config.issuer.as_str()]);
-    decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
+    let claims = decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
         .and_then(|token_data| Ok(token_data.claims))
-        .map_err(|e| GatewayError::TokenDecodeError(e.to_string()))
+        .map_err(|e| GatewayError::TokenDecodeError(e.to_string()));
+    dbg!(&claims);
+    return claims;
 }

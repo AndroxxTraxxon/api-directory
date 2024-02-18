@@ -17,17 +17,17 @@ use super::{
 // Intermediate function to configure services
 pub fn web_setup(cfg: &mut ServiceConfig) {
     cfg.service(
-        scope("/cfg/v1")
+        scope("/cfg/v1/api_services")
             .service(list_services)
             .service(add_service)
             .service(patch_service)
             // .service(http::update_service)
             .service(get_service_by_name_and_version)
-            .service(delete_service),
+            .service(delete_service)
     );
 }
 
-#[get("/api_services")]
+#[get("/")]
 async fn list_services(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<ApiService>>> {
     validate_jwt(&req, Some(&vec!["admin", "services-readonly"]))?;
     let api_services = Database::get_all_services(&repo).await?;
@@ -40,7 +40,7 @@ struct ApiServiceNamedVersionPath {
     pub version: String,
 }
 
-#[get("/api_services/{api_name}/{version}")]
+#[get("/{api_name}/{version}")]
 async fn get_service_by_name_and_version(
     req: HttpRequest,
     path_params: Path<ApiServiceNamedVersionPath>,
@@ -55,7 +55,7 @@ async fn get_service_by_name_and_version(
     Ok(Json(found_service))
 }
 
-#[post("/api_services")]
+#[post("/")]
 async fn add_service(
     req: HttpRequest,
     service: Json<ApiService>,
@@ -71,7 +71,7 @@ struct ApiServiceIdPath {
     pub service_id: String,
 }
 
-#[patch("/api_services/{service_id}")]
+#[patch("/{service_id}")]
 async fn patch_service(
     req: HttpRequest,
     path_params: Path<ApiServiceIdPath>,
@@ -85,7 +85,7 @@ async fn patch_service(
     Ok(Json(patched_service))
 }
 
-#[delete("/api_services/{service_id}")]
+#[delete("/{service_id}")]
 async fn delete_service(
     req: HttpRequest,
     path_params: Path<ApiServiceIdPath>,

@@ -1,5 +1,5 @@
 use super::models::{ApiService, PartialApiServiceUpdate};
-use crate::database::Database;
+use crate::database::{Database, API_SERVICE_TABLE};
 use crate::errors::{GatewayError, Result};
 use actix_web::web::Data;
 use async_trait::async_trait;
@@ -7,8 +7,6 @@ use serde::Serialize;
 use serde_json::{to_value, Value};
 use surrealdb::Result as dbResult;
 use surrealdb::{opt::PatchOp, sql::Datetime};
-
-const API_SERVICE_TABLE: &str = "service";
 
 #[derive(Serialize)]
 struct ServiceQueryParams<'a, 'b> {
