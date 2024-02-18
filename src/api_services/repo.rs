@@ -1,13 +1,12 @@
 use super::models::{ApiService, PartialApiServiceUpdate};
-use crate::errors::{GatewayError, Result};
 use crate::database::Database;
+use crate::errors::{GatewayError, Result};
 use actix_web::web::Data;
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{to_value, Value};
-use surrealdb::{opt::PatchOp, sql::Datetime};
 use surrealdb::Result as dbResult;
-
+use surrealdb::{opt::PatchOp, sql::Datetime};
 
 const API_SERVICE_TABLE: &str = "service";
 
@@ -41,7 +40,13 @@ pub trait ApiServiceRepository {
 }
 
 pub async fn setup_service_table_events(repo: &Database) -> std::io::Result<()> {
-    repo.define_index(API_SERVICE_TABLE, "serviceNamedVersionIndex", vec!["api_name", "version"], Some("UNIQUE")).await?;
+    repo.define_index(
+        API_SERVICE_TABLE,
+        "serviceNamedVersionIndex",
+        vec!["api_name", "version"],
+        Some("UNIQUE"),
+    )
+    .await?;
     repo.automate_created_date(API_SERVICE_TABLE).await?;
     repo.automate_last_modified_date(API_SERVICE_TABLE).await?;
     Ok(())
@@ -51,11 +56,9 @@ pub async fn setup_service_table_events(repo: &Database) -> std::io::Result<()> 
 impl ApiServiceRepository for Database {
     async fn get_all_services(repo: &Data<Database>) -> Result<Vec<ApiService>> {
         repo.db
-        .select(API_SERVICE_TABLE)
-        .await
-        .or_else(|err| {
-            Err(GatewayError::DatabaseError(err.to_string()))
-        })
+            .select(API_SERVICE_TABLE)
+            .await
+            .or_else(|err| Err(GatewayError::DatabaseError(err.to_string())))
     }
 
     async fn get_service_by_name_and_version(
@@ -64,26 +67,37 @@ impl ApiServiceRepository for Database {
         version: &String,
     ) -> Result<ApiService> {
         // Requires an index to enforce uniqueness on api name and version
-        let mut response = repo.db
-            .query(format!("\
+        let mut response = repo
+            .db
+            .query(format!(
+                "\
                 SELECT * FROM {} \
                 WHERE active = TRUE AND \
                 api_name = $api_name AND \
                 version = $version \
                 LIMIT 1\
-            ", API_SERVICE_TABLE))
-            .bind(ServiceQueryParams {table: API_SERVICE_TABLE, api_name, version })
+            ",
+                API_SERVICE_TABLE
+            ))
+            .bind(ServiceQueryParams {
+                table: API_SERVICE_TABLE,
+                api_name,
+                version,
+            })
             .await
             .map_err(|err| GatewayError::DatabaseError(err.to_string()))?;
-    
+
         let query_result: dbResult<Option<ApiService>> = response.take(0);
         query_result
             .map_err(|error| GatewayError::DatabaseError(error.to_string()))?
-            .ok_or_else(|| GatewayError::ServiceNotFound(
-                format!("No service named [{:?}] with version [{:?}] found.", api_name, version)
+            .ok_or(GatewayError::NotFound(
+                String::from("API Service"),
+                format!(
+                    "No service named [{:?}] with version [{:?}] found.",
+                    api_name, version
+                ),
             ))
     }
-    
 
     async fn add_service(repo: &Data<Database>, new_service: &ApiService) -> Result<ApiService> {
         let create_result: surrealdb::Result<Vec<ApiService>> =
@@ -123,16 +137,18 @@ impl ApiServiceRepository for Database {
 
             // Execute the update query
             match patch_request.await {
-                Ok(updated_record) => {
-                    match updated_record {
-                        Some(value) => Ok(value),
-                        None => Err(GatewayError::DatabaseError(String::from("Empty response from Database on update.")))
-                    }
+                Ok(updated_record) => match updated_record {
+                    Some(value) => Ok(value),
+                    None => Err(GatewayError::DatabaseError(String::from(
+                        "Empty response from Database on update.",
+                    ))),
                 },
                 Err(error) => Err(GatewayError::DatabaseError(error.to_string())),
             }
         } else {
-            Err(GatewayError::MissingData(String::from("Didn't understand the input data"))) // The serialized update data is not an object, which shouldn't happen in correct implementations
+            Err(GatewayError::MissingData(String::from(
+                "Didn't understand the input data",
+            ))) // The serialized update data is not an object, which shouldn't happen in correct implementations
         }
     }
 
@@ -141,20 +157,21 @@ impl ApiServiceRepository for Database {
         _service_id: &String,
         _updated_service: &ApiService,
     ) -> Result<ApiService> {
-        Err(GatewayError::NotImplemented(String::from("update_service has not yet been implemented.")))
+        Err(GatewayError::NotImplemented(String::from(
+            "update_service has not yet been implemented.",
+        )))
     }
 
     async fn delete_service(repo: &Data<Database>, service_id: &str) -> Result<()> {
-        repo
-        .db
-        .delete((API_SERVICE_TABLE, service_id))
-        .await
-        .or_else(|err| Err(GatewayError::DatabaseError(err.to_string())))
-        .and_then(|response: Option<PartialApiServiceUpdate>| {
-            match response {
+        repo.db
+            .delete((API_SERVICE_TABLE, service_id))
+            .await
+            .or_else(|err| Err(GatewayError::DatabaseError(err.to_string())))
+            .and_then(|response: Option<PartialApiServiceUpdate>| match response {
                 Some(_) => Ok(()),
-                None => Err(GatewayError::DatabaseError(String::from("Unable to delete api service entry")))
-            }
-        })
+                None => Err(GatewayError::DatabaseError(String::from(
+                    "Unable to delete api service entry",
+                ))),
+            })
     }
 }

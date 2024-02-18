@@ -13,8 +13,8 @@ pub enum GatewayError {
      * API Service Errors
      */
 
-    #[error("Service not found: {0}")]
-    ServiceNotFound(String),
+    #[error("{0} Record not found: {1}")]
+    NotFound(String, String),
 
     #[error("Missing data: {0}")]
     MissingData(String),
@@ -36,12 +36,6 @@ pub enum GatewayError {
     NotImplemented(String),
 
     /**
-     * User Errors
-     */
-    #[error("User Not Found: {0}")]
-    UserNotFound(String),
-    
-    /**
      * Auth Errors
      */
 
@@ -58,6 +52,9 @@ pub enum GatewayError {
 
     #[error("Missing Authorization Scope: {0}")]
     AccessDenied(String),
+
+    #[error("System Error: {0}")]
+    SystemError(String)
 }
 
 impl ResponseError for GatewayError {
@@ -68,7 +65,7 @@ impl ResponseError for GatewayError {
 
     fn status_code(&self) -> StatusCode {
         match self {
-            GatewayError::ServiceNotFound(_) => StatusCode::NOT_FOUND,
+            GatewayError::NotFound(_, _) => StatusCode::NOT_FOUND,
             GatewayError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             GatewayError::MissingData(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,

@@ -1,19 +1,19 @@
 use std::collections::BTreeMap;
 
 use surrealdb::engine::local::{Db, SpeeDb};
-use surrealdb::{Error as DbError, Surreal, Result as DbResult};
+use surrealdb;
 use std::io;
 
 #[derive(Clone)]
 pub struct Database {
-    pub db: Surreal<Db>,
+    pub db: surrealdb::Surreal<Db>,
     pub namespace: String,
     pub name: String,
 }
 
 impl Database {
-    pub async fn init(connection: &str, namespace: &str, name: &str) -> DbResult<Self>{
-        let db = Surreal::new::<SpeeDb>(connection).await?;
+    pub async fn init(connection: &str, namespace: &str, name: &str) -> surrealdb::Result<Self>{
+        let db = surrealdb::Surreal::new::<SpeeDb>(connection).await?;
         db.use_ns(namespace).use_db(name).await?;
 
         Ok(Database {
@@ -36,6 +36,7 @@ impl Database {
             .query(format!("INFO FOR TABLE {}", table))
             .await
             .map_err(|e| io::Error::other(e))?;
+        // Grotesque generic data structure for Table info...
         let results: Vec<BTreeMap<String, BTreeMap<String, String>>> =
             response.take(0).map_err(|e| io::Error::other(e))?;
         if let Some(events) = results
@@ -81,8 +82,11 @@ impl Database {
             .query(format!("INFO FOR TABLE {}", table))
             .await
             .map_err(|e| io::Error::other(e))?;
+
+        // Grotesque generic data structure for Table info...
         let results: Vec<BTreeMap<String, BTreeMap<String, String>>> =
             response.take(0).map_err(|e| io::Error::other(e))?;
+        
         if let Some(events) = results
             .get(0)
             .ok_or(io::Error::other(format!("No INFO result for table [{}]", table)))?

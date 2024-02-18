@@ -6,18 +6,19 @@ mod auth;
 mod database;
 mod errors;
 mod forwarder;
-mod tlsconf;
+mod secconf;
 mod users;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
     let socket_addr = "127.0.2.1:443";
-    let tls_config = tlsconf::load_tls_config()?;
-    let jwt_config = web::Data::new(tlsconf::load_jwt_config()?);
+    let tls_config = secconf::load_tls_config()?;
+    let jwt_config = web::Data::new(secconf::load_jwt_config()?);
     let db = database::Database::init("temp.speedb", "api_directory", "services")
         .await
         .expect("Error connecting to database");
+
     api_services::repo::setup_service_table_events(&db).await?;
     users::repo::setup_user_table(&db).await?;
     auth::repo::setup_reset_request_table(&db).await?;

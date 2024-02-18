@@ -1,9 +1,9 @@
-use serde::Deserialize;
 use actix_web::{
     get, patch, post,
     web::{scope, Data, Json, Path, ServiceConfig},
     HttpRequest,
 };
+use serde::Deserialize;
 
 use super::{
     models::{GatewayUser, PartialGatewayUserUpdate},
@@ -11,8 +11,8 @@ use super::{
 };
 
 use crate::auth::rest::validate_jwt_for_scopes;
-use crate::errors::{Result};
 use crate::database::Database;
+use crate::errors::Result;
 
 // Intermediate function to configure services
 pub fn web_setup(cfg: &mut ServiceConfig) {
@@ -33,7 +33,11 @@ async fn list_users(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<G
 }
 
 #[post("/users")]
-async fn register_user(req: HttpRequest, repo: Data<Database>, user_json: Json<GatewayUser>) -> Result<Json<GatewayUser>> {
+async fn register_user(
+    req: HttpRequest,
+    repo: Data<Database>,
+    user_json: Json<GatewayUser>,
+) -> Result<Json<GatewayUser>> {
     validate_jwt_for_scopes(&req, &vec!["admin"])?;
     let user_data = user_json.into_inner();
     let registered_user = Database::register_user(&repo, user_data).await?;

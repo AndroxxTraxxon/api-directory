@@ -119,8 +119,8 @@ impl UserRepository for Database {
 
         match query_result {
             Some(user) => Ok(user),
-            None => Err(GatewayError::UserNotFound(String::from(
-                "Could not authenticate with the provided username and password",
+            None => Err(GatewayError::NotFound(String::from(USER_TABLE), String::from(
+                "Could not find a user with the specified ID",
             ))),
         }
     }
