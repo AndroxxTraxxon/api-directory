@@ -4,13 +4,11 @@ use super::{
     repo::UserAuthRepository,
 };
 use crate::database::Database;
-use crate::{
-    auth::models::UserForm,
-    errors::{GatewayError, Result},
-};
+use crate::errors::{GatewayError, Result, unknown_resource_error};
+use crate::auth::models::UserForm;
 use actix_web::{
     patch, post,
-    web::{scope, Data, Json, Path, ServiceConfig},
+    web::{scope, Data, Json, Path, ServiceConfig, to},
     HttpRequest, HttpResponse,
 };
 use jsonwebtoken::{decode, encode, Header, Validation};
@@ -20,13 +18,14 @@ use surrealdb::sql::{Id, Thing};
 const GATEWAY_JWT_ISSUER: &str = "apigateway.local";
 
 // Intermediate function to configure services
-pub fn web_setup(cfg: &mut ServiceConfig) {
+pub fn service_setup(cfg: &mut ServiceConfig) {
     cfg.service(
         scope("/auth/v1")
             .service(authenticate_user)
             .service(set_password)
             .service(request_password_reset)
-            .service(reset_password),
+            .service(reset_password)
+            .default_service(to(unknown_resource_error))
     );
 }
 
@@ -140,9 +139,7 @@ pub fn validate_jwt(req: &HttpRequest, scopes: Option<&Vec<&str>>) -> Result<Gat
         validation.validate_aud = false;
     }
     validation.set_issuer(&[jwt_config.issuer.as_str()]);
-    let claims = decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
+    decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
         .and_then(|token_data| Ok(token_data.claims))
-        .map_err(|e| GatewayError::TokenDecodeError(e.to_string()));
-    dbg!(&claims);
-    return claims;
+        .map_err(|e| GatewayError::TokenDecodeError(e.to_string()))
 }

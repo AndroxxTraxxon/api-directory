@@ -1,6 +1,6 @@
 use actix_web::{
     get, patch, post,
-    web::{scope, Data, Json, Path, ServiceConfig},
+    web::{scope, to, Data, Json, Path, ServiceConfig},
     HttpRequest,
 };
 use serde::Deserialize;
@@ -10,12 +10,12 @@ use super::{
     repo::UserRepository,
 };
 
-use crate::auth::rest::validate_jwt;
 use crate::database::Database;
-use crate::errors::Result;
+use crate::errors::{Result, unknown_resource_error};
+use crate::auth::web::validate_jwt;
 
 // Intermediate function to configure services
-pub fn web_setup(cfg: &mut ServiceConfig) {
+pub fn service_setup(cfg: &mut ServiceConfig) {
     cfg.service(
         scope("/cfg/v1/users")
             .service(list_users)
@@ -24,7 +24,8 @@ pub fn web_setup(cfg: &mut ServiceConfig) {
             // So that `currentuser` doesn't get captured as a UserID
             .service(current_user)
             .service(user_detail)
-            .service(update_user),
+            .service(update_user)
+            .default_service(to(unknown_resource_error)),
     );
 }
 

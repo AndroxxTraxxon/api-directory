@@ -1,4 +1,5 @@
 use actix_web::{middleware, web, App, HttpServer};
+use actix_files;
 use env_logger;
 
 mod api_services;
@@ -31,11 +32,14 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::new(
                 "%a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
             ))
+            .wrap(secconf::load_cors_config())
             .app_data(db_data.clone())
             .app_data(jwt_config.clone())
-            .configure(api_services::rest::web_setup)
-            .configure(auth::rest::web_setup)
-            .configure(users::rest::web_setup)
+            .configure(api_services::web::service_setup)
+            .configure(auth::web::service_setup)
+            .configure(users::web::service_setup)
+            .service(actix_files::Files::new("/app", "./www").index_file("index.html"))
+            .service(web::redirect("/", "/app"))
             .default_service(
                 // Register `forward` as the default service
                 web::route().to(forwarder::forward),

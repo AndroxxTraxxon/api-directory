@@ -1,4 +1,4 @@
-use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+use actix_web::{http::StatusCode, HttpResponse, Responder, ResponseError};
 
 use serde_json::json;
 use thiserror::Error;
@@ -70,6 +70,10 @@ impl ResponseError for GatewayError {
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
+}
+
+pub async fn unknown_resource_error() -> impl Responder {
+    HttpResponse::BadRequest().json(json!({"success": false, "error": "Unknown Resource URL"}))
 }
 
 pub type Result<T> = core::result::Result<T, GatewayError>;

@@ -1,13 +1,13 @@
 use actix_web::{
     delete, get, patch, post,
-    web::{scope, Data, Json, Path, ServiceConfig},
+    web::{scope, to, Data, Json, Path, ServiceConfig},
     HttpRequest, HttpResponse,
 };
 use serde::Deserialize;
 
-use crate::auth::rest::validate_jwt;
+use crate::auth::web::validate_jwt;
 use crate::database::Database;
-use crate::errors::Result;
+use crate::errors::{Result, unknown_resource_error};
 
 use super::{
     models::{ApiService, PartialApiServiceUpdate},
@@ -15,7 +15,7 @@ use super::{
 };
 
 // Intermediate function to configure services
-pub fn web_setup(cfg: &mut ServiceConfig) {
+pub fn service_setup(cfg: &mut ServiceConfig) {
     cfg.service(
         scope("/cfg/v1/api_services")
             .service(list_services)
@@ -24,6 +24,7 @@ pub fn web_setup(cfg: &mut ServiceConfig) {
             // .service(http::update_service)
             .service(get_service_by_name_and_version)
             .service(delete_service)
+            .default_service(to(unknown_resource_error))
     );
 }
 

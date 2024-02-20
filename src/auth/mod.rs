@@ -1,3 +1,3 @@
 pub mod models;
-pub mod rest;
+pub mod web;
 pub mod repo;

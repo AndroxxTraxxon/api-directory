@@ -1,8 +1,9 @@
+use std::collections::HashSet;
 
 use crate::{
     api_services::repo::ApiServiceRepository,
     database::Database,
-    auth::rest::validate_jwt,
+    auth::web::validate_jwt,
 };
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use futures_util::stream::TryStreamExt;
@@ -18,6 +19,10 @@ pub async fn forward(
 
     let segments: Vec<&str> = req.path().splitn(4, '/').collect();
 
+    // Just validate that the token is valid and not expired. scopes will be checked later.
+    let claims = validate_jwt(&req, None)
+        .map_err(|e| actix_web::error::ErrorForbidden(e.to_string()))?;
+
     if segments.len() != 4 {
         return Ok(HttpResponse::BadRequest().finish());
     }
@@ -31,13 +36,24 @@ pub async fn forward(
 
     if let Ok(service) = Database::get_service_by_name_and_version(&db, &api_name, &version).await {
         // Construct the full URL
-        let scopes: Vec<&str> = service.gateway_scopes.iter().map(AsRef::as_ref).collect();
-        validate_jwt(&req, Some(&scopes))
-            .map_err(|e| actix_web::error::ErrorForbidden(e.to_string()))?;
-        
+        let service_scopes: Vec<&str> = service.gateway_scopes.iter().map(AsRef::as_ref).collect();
+        let authorized_scopes: Vec<String> = claims.aud;
+        if !check_scope_intersection(service_scopes, authorized_scopes) {
+            return Err(actix_web::error::ErrorForbidden("User is not authorized for service scopes"))
+        }
         log::debug!("Configured Forward URL: {}", service.forward_url);
         let forward_url = format!("{}/{}", service.forward_url, endpoint);
-        log::debug!("Forwarding request to {}", forward_url);
+        
+        log::info!(
+            "{} -> {}[{}] as {} \"{} {}\"", 
+            req.peer_addr().unwrap().ip().to_string(), 
+            &api_name,
+            &version,
+            &claims.sub_id,
+            &req.method(),
+            &forward_url,
+        );
+        
 
 
         // Initialize the client request
@@ -90,3 +106,18 @@ pub async fn forward(
         Ok(HttpResponse::NotFound().finish())
     }
 }
+
+fn check_scope_intersection(service_scopes: Vec<&str>, authorized_scopes: Vec<String>) -> bool {
+    // Convert authorized_scopes to a HashSet for efficient lookup
+    let authorized_set: HashSet<&String> = authorized_scopes.iter().collect();
+
+    // Iterate over service_scopes and check for any intersection
+    for scope in service_scopes {
+        if authorized_set.contains(&scope.to_string()) {
+            return true; // Found a matching scope, can return early
+        }
+    }
+
+    false // No matching scopes found
+}
+
