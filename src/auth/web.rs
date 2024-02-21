@@ -6,6 +6,7 @@ use super::{
 use crate::database::Database;
 use crate::errors::{GatewayError, Result, unknown_resource_error};
 use crate::auth::models::UserForm;
+use actix_web::http::header;
 use actix_web::{
     patch, post,
     web::{scope, Data, Json, Path, ServiceConfig, to},
@@ -117,7 +118,7 @@ async fn reset_password(
 
 pub fn validate_jwt(req: &HttpRequest, scopes: Option<&Vec<&str>>) -> Result<GatewayUserClaims> {
     let jwt_config = req.app_data::<Data<JwtConfig>>().unwrap();
-    let token = match req.headers().get("Authorization") {
+    let token = match req.headers().get(header::AUTHORIZATION) {
         Some(auth_header) => {
             let auth_header = auth_header.to_str().unwrap_or("");
             let parts: Vec<&str> = auth_header.splitn(2, ' ').collect();

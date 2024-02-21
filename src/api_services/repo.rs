@@ -17,7 +17,7 @@ struct ServiceQueryParams<'a, 'b> {
 
 #[async_trait]
 pub trait ApiServiceRepository {
-    async fn get_all_services(repo: &Data<Database>) -> Result<Vec<ApiService>>;
+    async fn list_services(repo: &Data<Database>) -> Result<Vec<ApiService>>;
     async fn get_service_by_name_and_version(
         repo: &Data<Database>,
         api_name: &String,
@@ -52,7 +52,7 @@ pub async fn setup_service_table_events(repo: &Database) -> std::io::Result<()> 
 
 #[async_trait]
 impl ApiServiceRepository for Database {
-    async fn get_all_services(repo: &Data<Database>) -> Result<Vec<ApiService>> {
+    async fn list_services(repo: &Data<Database>) -> Result<Vec<ApiService>> {
         repo.db
             .select(API_SERVICE_TABLE)
             .await

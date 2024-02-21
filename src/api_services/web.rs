@@ -31,7 +31,7 @@ pub fn service_setup(cfg: &mut ServiceConfig) {
 #[get("/")]
 async fn list_services(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<ApiService>>> {
     validate_jwt(&req, Some(&vec!["admin", "services-readonly"]))?;
-    let api_services = Database::get_all_services(&repo).await?;
+    let api_services = Database::list_services(&repo).await?;
     Ok(Json(api_services))
 }
 
