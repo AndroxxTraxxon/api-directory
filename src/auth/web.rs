@@ -13,6 +13,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use jsonwebtoken::{decode, encode, Header, Validation};
+use serde_json::json;
 use std::time::SystemTime;
 use surrealdb::sql::{Id, Thing};
 
@@ -82,9 +83,14 @@ async fn set_password(
     repo: Data<Database>,
     password_form: Json<PasswordForm>,
 ) -> Result<HttpResponse> {
+    let auth_claims = validate_jwt(&req, None)?;
     let user_id = validate_jwt(&req, None)?.sub_id;
-    let password = password_form.into_inner().password;
-    Database::set_user_password(&repo, &user_id, &password).await?;
+    let request_form = password_form.into_inner();
+    Database::authenticate_user(&repo, &auth_claims.sub, &request_form.old_password).await.map_err(|e| match e {
+        GatewayError::InvalidUsernameOrPassword(_) => GatewayError::InvalidUsernameOrPassword("Old password does not match".to_string()),
+        other => other
+    })?;
+    Database::set_user_password(&repo, &user_id, &request_form.password).await?;
     Ok(HttpResponse::NoContent().finish())
 }
 
@@ -94,8 +100,8 @@ async fn request_password_reset(
     user_form: Json<UserForm>,
 ) -> Result<HttpResponse> {
     let username = user_form.into_inner().username;
-    Database::request_password_reset(&repo, &username).await?;
-    Ok(HttpResponse::NoContent().finish())
+    let _ = Database::request_password_reset(&repo, &username).await;
+    Ok(HttpResponse::Created().json(json!({"success": true, "message": format!("If a user exists with the username {}, they will receive a message to reset their password through the appropriate channel.", &username)})))
 }
 
 #[patch("/reset-password/{request_id}")]

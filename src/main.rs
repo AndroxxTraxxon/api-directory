@@ -1,6 +1,7 @@
-use actix_web::{middleware, web, App, HttpServer};
+use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use actix_files;
 use env_logger;
+use serde_json::json;
 
 mod api_services;
 mod auth;
@@ -38,6 +39,7 @@ async fn main() -> std::io::Result<()> {
             .configure(api_services::web::service_setup)
             .configure(auth::web::service_setup)
             .configure(users::web::service_setup)
+            .service(web::scope("/cfg").default_service(web::route().to(not_found)))
             .service(actix_files::Files::new("/app", "./www").index_file("index.html"))
             .service(web::redirect("/", "/app"))
             .default_service(
@@ -48,4 +50,9 @@ async fn main() -> std::io::Result<()> {
     .bind_rustls_0_22(socket_addr, tls_config)?
     .run()
     .await
+}
+
+
+async fn not_found() -> impl actix_web::Responder {
+    HttpResponse::NotFound().json(json!({"success": false, "error": "Unknown Config Service"}))
 }

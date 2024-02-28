@@ -40,7 +40,7 @@ async fn list_users(req: HttpRequest, repo: Data<Database>) -> Result<Json<Vec<G
 async fn register_user(
     req: HttpRequest,
     repo: Data<Database>,
-    user_json: Json<GatewayUser>,
+    user_json: Json<PartialGatewayUserUpdate>,
 ) -> Result<Json<GatewayUser>> {
     validate_jwt(&req, Some(&vec!["admin"]))?;
     let user_data = user_json.into_inner();

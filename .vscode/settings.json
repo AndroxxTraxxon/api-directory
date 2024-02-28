@@ -1,0 +1,32 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "./Cargo.toml"
+    ],
+    "rust-analyzer.showUnlinkedFileNotification": false,
+    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.files.excludeDirs": [
+        "target", ".rust-analyzer", ".vscode"
+    ],
+    "rust-analyzer.check.targets": "x86_64-unknown-linux-gnu",
+    "rust-analyzer.check.invocationLocation": "root", 
+    "rust-analyzer.cargo.extraArgs": [
+        "--target-dir=.rust-analyzer"
+    ],
+    "rust-analyzer.check.extraArgs": [
+        "--target-dir=.rust-analyzer"
+    ],
+    "rust-analyzer.cargo.buildScripts.overrideCommand": [
+        "cargo", 
+        "check", 
+        "--quiet", 
+        "--workspace", 
+        "--message-format=json", 
+        "--all-targets",
+        "--target-dir=.rust-analyzer"
+    ],
+    "rust-analyzer.cargo.buildScripts.useRustcWrapper": true,
+    "files.watcherExclude": {
+        "**/target/**": true,
+        "**/.rust-analyzer/**": true
+    },
+}

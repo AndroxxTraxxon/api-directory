@@ -56,7 +56,7 @@ impl ApiServiceRepository for Database {
         repo.db
             .select(API_SERVICE_TABLE)
             .await
-            .or_else(|err| Err(GatewayError::DatabaseError(err.to_string())))
+            .map_err(|err| GatewayError::DatabaseError(err.to_string()))
     }
 
     async fn get_service_by_name_and_version(

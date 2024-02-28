@@ -1,7 +1,8 @@
 target
 temp.db
 temp.speedb
-.vscode
+# .vscode
 .ssl.dev
 history.txt
 www
+.rust-analyzer

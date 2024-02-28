@@ -3,6 +3,8 @@ use std::time::SystemTime;
 use actix_web::web::Data;
 use async_trait::async_trait;
 use serde::Serialize;
+use serde_json::{to_value, Value};
+use surrealdb::opt::PatchOp;
 use surrealdb::sql::{Datetime, Id, Thing};
 
 use super::models::{GatewayUser, PartialGatewayUserUpdate};
@@ -11,11 +13,11 @@ use crate::database::Database;
 use crate::errors::{GatewayError, Result};
 
 pub const USER_TABLE: &str = "gateway_user";
-const PASSWORD_RESET_TABLE: &str = "password_reset_request";
+const PASSWORD_RESET_TABLE: &str = "password_reset__request";
 
 #[async_trait]
 pub trait UserRepository {
-    async fn register_user(repo: &Data<Database>, user: GatewayUser) -> Result<GatewayUser>;
+    async fn register_user(repo: &Data<Database>, user: PartialGatewayUserUpdate) -> Result<GatewayUser>;
 
     async fn user_detail(repo: &Data<Database>, user_id: &String) -> Result<GatewayUser>;
 
@@ -47,7 +49,7 @@ pub async fn setup_user_table(repo: &Database) -> std::io::Result<()> {
 
 #[async_trait]
 impl UserRepository for Database {
-    async fn register_user(repo: &Data<Database>, new_user: GatewayUser) -> Result<GatewayUser> {
+    async fn register_user(repo: &Data<Database>, new_user: PartialGatewayUserUpdate) -> Result<GatewayUser> {
         // First, validate the GatewayUser
         // new_user.validate().map_err(|e| GatewayError::ValidationError(e.to_string()))?;
 
@@ -113,14 +115,54 @@ impl UserRepository for Database {
     }
 
     async fn update_user(
-        _repo: &Data<Database>,
-        _user_id: &String,
-        _user: &PartialGatewayUserUpdate,
+        repo: &Data<Database>,
+        user_id: &String,
+        user: &PartialGatewayUserUpdate,
     ) -> Result<GatewayUser> {
-        Err(GatewayError::NotImplemented(String::from("update_user")))
+        // Serialize the PartialApiServiceUpdate struct to a serde_json Value
+        let update_data: Value =
+            to_value(user).map_err(|e| GatewayError::MissingData(e.to_string()))?; // Handle this unwrap more gracefully in production code
+
+        if let Value::Object(fields) = update_data {
+            // Start constructing the update query for the specific service ID
+            let mut patch_request = repo
+                .db
+                .update((USER_TABLE, user_id))
+                .patch(PatchOp::replace("/last_modified", Datetime::default()));
+
+            // Iterate over the fields in the JSON object
+            for (key, value) in fields {
+                // Skip fields that are null or not provided in the partial update
+                if !value.is_null() {
+                    // Construct the JSON Pointer string
+                    let prop_path = format!("/{}", key);
+
+                    // Apply a patch operation for the current field
+                    patch_request = patch_request.patch(PatchOp::replace(&prop_path, value));
+                }
+            }
+
+            // Execute the update query
+            match patch_request.await {
+                Ok(updated_record) => match updated_record {
+                    Some(value) => Ok(value),
+                    None => Err(GatewayError::DatabaseError(String::from(
+                        "Empty response from Database on update.",
+                    ))),
+                },
+                Err(error) => Err(GatewayError::DatabaseError(error.to_string())),
+            }
+        } else {
+            Err(GatewayError::MissingData(String::from(
+                "Didn't understand the input data",
+            ))) // The serialized update data is not an object, which shouldn't happen in correct implementations
+        }
     }
 
-    async fn list_users(_repo: &Data<Database>) -> Result<Vec<GatewayUser>> {
-        Err(GatewayError::NotImplemented(String::from("list_users")))
+    async fn list_users(repo: &Data<Database>) -> Result<Vec<GatewayUser>> {
+        repo.db
+            .select(USER_TABLE)
+            .await
+            .map_err(|e| GatewayError::DatabaseError(e.to_string()))
     }
 }

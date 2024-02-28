@@ -48,6 +48,7 @@ pub struct PasswordResetRequest {
 
 #[derive(Deserialize)]
 pub struct PasswordForm {
+    pub old_password: String,
     pub password: String,
 }
 
