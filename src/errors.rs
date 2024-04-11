@@ -27,8 +27,8 @@ pub enum GatewayError {
     #[error("Database error: {0}")]
     DatabaseError(String),
 
-    #[error("Not implemented: {0}")]
-    NotImplemented(String),
+    // #[error("Not implemented: {0}")]
+    // NotImplemented(String),
 
     /**
      * Auth Errors
@@ -77,3 +77,9 @@ pub async fn unknown_resource_error() -> impl Responder {
 }
 
 pub type Result<T> = core::result::Result<T, GatewayError>;
+
+impl From<surrealdb::Error> for GatewayError {
+    fn from(value: surrealdb::Error) -> Self {
+        GatewayError::DatabaseError(value.to_string())
+    }
+}

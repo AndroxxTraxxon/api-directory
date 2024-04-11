@@ -1,11 +1,56 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
-use validator::Validate;
 use surrealdb::sql::Thing;
+use validator::Validate;
+
+use crate::database::{
+    API_ROLE_TABLE, NAMESPACE_MEMBER_ROLE, ROLE_NAMESPACE_DELIMITER,
+};
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct ApiService {
-    pub id: Option<Thing>,
+pub struct WebRequestApiService {
+    #[validate(length(min = 3))]
+    pub api_name: String,
+    
+    #[validate(length(min = 1))]
+    pub version: String,
 
+    #[validate(length(min = 3))]
+    pub forward_url: String,
+
+    pub active: bool,
+
+    #[validate(length(min = 1))]
+    pub role_namespaces: Vec<String>,
+
+    #[validate(length(min = 1))]
+    pub roles: Vec<WebApiRole>,
+
+    #[validate(length(min = 1))]
+    pub environment: String,
+}
+
+impl From<&WebRequestApiService> for Vec<WebApiRole> {
+    fn from(value: &WebRequestApiService) -> Self {
+        let mut roles = value.roles.clone();
+        if !value.role_namespaces.is_empty() {
+            value.role_namespaces.iter().for_each(|namespace| {
+                roles.push(WebApiRole {
+                    id: None,
+                    namespace: namespace.clone(),
+                    name: NAMESPACE_MEMBER_ROLE.into(),
+                });
+            });
+        }
+
+        roles
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+pub struct WebResponseApiService {
+    pub id: String,
     #[validate(length(min = 3))]
     pub api_name: String,
 
@@ -18,60 +63,120 @@ pub struct ApiService {
     pub version: String,
 
     #[validate(length(min = 1))]
-    pub gateway_scopes: Vec<String>,
-
-    #[validate]
-    pub auth_details: Option<AuthDetails>,
-
-    #[validate]
-    pub rate_limiting: Option<RateLimiting>,
-
-    #[validate(url)]
-    pub health_check_url: Option<String>,
-
-    #[validate(url)]
-    pub documentation_url: Option<String>,
-
-    #[validate]
-    pub contact_info: ContactInfo,
-
-    #[validate]
-    pub sla: Option<SLADetails>,
-
-    #[validate]
-    pub security_requirements: Option<SecurityRequirements>,
-
-    pub data_formats: Option<Vec<String>>, // might want a custom validation here to check for valid MIME types
-    pub ip_whitelist: Option<Vec<String>>, // Custom validation could be added to ensure valid IP addresses
-    pub ip_blacklist: Option<Vec<String>>, // Same as above for IP blacklist
-
-    #[validate]
-    pub caching_policy: Option<CachingPolicy>,
+    pub role_namespaces: Vec<String>,
 
     #[validate(length(min = 1))]
-    pub load_balancing_strategy: Option<String>,
-
-    pub custom_headers: Option<Vec<String>>, // Custom validation might be needed based on your header requirements
-    pub dependencies: Option<Vec<String>>,   // Validate based on your requirements for dependencies
+    pub roles: Vec<WebApiRole>,
 
     #[validate(length(min = 1))]
     pub environment: String,
-
-    #[validate]
-    pub deployment_info: Option<DeploymentInfo>,
-
-    #[validate]
-    pub error_handling: Option<ErrorHandling>,
-
-    #[validate]
-    pub metadata: Option<Vec<Metadata>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct PartialApiServiceUpdate {
+pub struct DbFullApiService {
+    pub id: Thing,
+    #[validate(length(min = 3))]
+    pub api_name: String,
+    #[validate(length(min = 3))]
+    pub forward_url: String,
+    pub active: bool,
     #[validate(length(min = 1))]
-    pub id: Option<String>,
+    pub version: String,
+    #[validate(length(min = 1))]
+    pub environment: String,
+    pub roles: Vec<DbApiRole>,
+}
 
+
+impl From<&DbFullApiService> for WebResponseApiService {
+    fn from(other: &DbFullApiService) -> Self {
+        let mut namespaces: Vec<String> = Vec::new();
+        let mut roles: Vec<WebApiRole> = Vec::new();
+        for db_role in &other.roles {
+            if db_role.name == NAMESPACE_MEMBER_ROLE.to_string() {
+                namespaces.push(db_role.namespace.clone());
+            } else {
+                roles.push(db_role.into());
+            }
+        }
+        Self {
+            id: format!("{}", other.id.id),
+            api_name: other.api_name.clone(),
+            forward_url: other.forward_url.clone(),
+            active: other.active,
+            version: other.version.clone(),
+            role_namespaces: namespaces,
+            roles: roles.clone(),
+            environment: other.environment.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+pub struct DbApiServiceRequest {
+    #[validate(length(min = 3))]
+    pub api_name: String,
+
+    #[validate(length(min = 3))]
+    pub forward_url: String,
+
+    pub active: bool,
+
+    #[validate(length(min = 1))]
+    pub version: String,
+
+    #[validate(length(min = 1))]
+    pub environment: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+pub struct DbApiServiceRecord {
+    pub id: Thing,
+    #[validate(length(min = 3))]
+    pub api_name: String,
+
+    #[validate(length(min = 3))]
+    pub forward_url: String,
+
+    pub active: bool,
+
+    #[validate(length(min = 1))]
+    pub version: String,
+
+    #[validate(length(min = 1))]
+    pub environment: String,
+}
+
+impl From<&WebRequestApiService> for DbApiServiceRequest {
+    
+    fn from(value: &WebRequestApiService) -> Self {
+        Self {
+            api_name: value.api_name.clone(),
+            forward_url: value.forward_url.clone(),
+            active: value.active.clone(),
+            version: value.version.clone(),
+            environment: value.environment.clone(),
+        }
+    }
+}
+
+
+impl From<(&DbApiServiceRecord, &Vec<DbApiRole>)> for DbFullApiService {
+    fn from((service, roles): (&DbApiServiceRecord, &Vec<DbApiRole>)) -> Self {
+        Self {
+            id: service.id.clone(),
+            api_name: service.api_name.clone(),
+            forward_url: service.forward_url.clone(),
+            active: service.active,
+            version: service.version.clone(),
+            roles: roles.clone(),
+            environment: service.environment.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+pub struct WebRequestPartialApiService {
     #[validate(length(min = 3))]
     pub api_name: Option<String>,
 
@@ -83,123 +188,109 @@ pub struct PartialApiServiceUpdate {
     #[validate(length(min = 1))]
     pub version: Option<String>,
 
-    #[validate]
-    pub auth_details: Option<AuthDetails>,
-
-    #[validate]
-    pub rate_limiting: Option<RateLimiting>,
-
-    #[validate(url)]
-    pub health_check_url: Option<String>,
-
-    #[validate(url)]
-    pub documentation_url: Option<String>,
-
-    #[validate]
-    pub contact_info: Option<ContactInfo>,
-
-    #[validate]
-    pub sla: Option<SLADetails>,
-
-    #[validate]
-    pub security_requirements: Option<SecurityRequirements>,
-
-    pub data_formats: Option<Vec<String>>, // might want a custom validation here to check for valid MIME type>s
-    pub ip_whitelist: Option<Vec<String>>, // Custom validation could be added to ensure valid IP addresse>s
-    pub ip_blacklist: Option<Vec<String>>, // Same as above for IP blacklis>t
-
-    #[validate]
-    pub caching_policy: Option<CachingPolicy>,
+    #[validate(length(min = 1))]
+    pub role_namespaces: Option<Vec<String>>,
 
     #[validate(length(min = 1))]
-    pub load_balancing_strategy: Option<String>,
-
-    pub custom_headers: Option<Vec<String>>, // Custom validation might be needed based on your header requirement>
-    pub dependencies: Option<Vec<String>>,   // Validate based on your requirements for dependencies
+    pub roles: Option<Vec<WebApiRole>>,
 
     #[validate(length(min = 1))]
     pub environment: Option<String>,
-
-    #[validate]
-    pub deployment_info: Option<DeploymentInfo>,
-
-    #[validate]
-    pub error_handling: Option<ErrorHandling>,
-
-    #[validate]
-    pub metadata: Option<Vec<Metadata>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct AuthDetails {
-    #[validate(length(min = 1))]
-    pub method: String,
+impl From<&WebRequestPartialApiService> for Vec<WebApiRole> {
+    fn from(value: &WebRequestPartialApiService) -> Self {
+        let mut all_roles = Self::new();
+        if let Some(roles) = &value.roles {
+            all_roles.extend(roles.clone());
+        } 
+        if let Some(namespaces) = &value.role_namespaces {
+            for namespace in namespaces {
+                all_roles.push(WebApiRole {
+                    id: None,
+                    namespace: namespace.clone(),
+                    name: NAMESPACE_MEMBER_ROLE.into(),
+                })
+            }
+        }
 
-    #[validate(length(min = 1))]
-    pub required_headers: Vec<String>,
+        all_roles
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct RateLimiting {
-    #[validate(range(min = 1))]
-    pub requests: u64,
-
-    #[validate(length(min = 1))]
-    pub interval: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct ContactInfo {
-    #[validate(length(min = 1))]
-    pub team: String,
-
-    #[validate(email)]
-    pub email: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct SLADetails {
-    #[validate(range(min = 0, max = 100))]
-    pub uptime_percentage: f64,
-
-    #[validate(range(min = 1))]
-    pub response_time_ms: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct SecurityRequirements {
-    pub protocols: Vec<String>, // Custom validation for valid protocols
-    pub compliance_standards: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct CachingPolicy {
-    pub enabled: bool,
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, PartialEq, Eq)]
+pub struct DbApiRole {
+    pub id: Option<Thing>,
+    #[validate(length(min = 3))]
+    pub namespace: String,
 
     #[validate(length(min = 1))]
-    pub duration: String,
+    pub name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct DeploymentInfo {
-    #[validate(length(min = 1))]
-    pub platform: String,
+pub struct WebApiRole {
+    pub id: Option<String>,
 
-    pub container_info: Option<String>,
+    #[validate(length(min = 3))]
+    pub namespace: String,
+
+    #[validate(length(min = 1))]
+    pub name: String,
+}
+
+impl From<&WebApiRole> for DbApiRole {
+    fn from(web_record: &WebApiRole) -> Self {
+        Self {
+            id: match &web_record.id {
+                Some(web_id) => Some(Thing::from((API_ROLE_TABLE.to_string(), web_id.clone()))),
+                _ => None
+            },
+            namespace: web_record.namespace.clone(),
+            name: web_record.name.clone(),
+        }
+    }
+}
+
+impl fmt::Display for DbApiRole {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}{}{}",
+            self.namespace, ROLE_NAMESPACE_DELIMITER, self.name
+        )
+    }
+}
+
+impl From<&DbApiRole> for WebApiRole {
+    fn from(db_record: &DbApiRole) -> Self {
+        Self {
+            id: match &db_record.id {
+                Some(thing) => Some(format!("{}", thing.id)),
+                _ => None,
+            },
+            namespace: db_record.namespace.clone(),
+            name: db_record.name.clone(),
+        }
+    }
+}
+
+impl fmt::Display for WebApiRole {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}{}{}",
+            self.namespace, ROLE_NAMESPACE_DELIMITER, self.name
+        )
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct ErrorHandling {
-    pub status_codes: Vec<u16>, // Validate for valid HTTP status codes
-
-    pub custom_payloads: Option<Vec<String>>,
+pub struct RelatedAuthorizations {
+    pub authorizations: Vec<Thing>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
-pub struct Metadata {
-    #[validate(length(min = 1))]
-    pub key: String,
-
-    #[validate(length(min = 1))]
-    pub value: String,
+pub struct RelatedMembers {
+    pub members: Vec<Thing>,
 }

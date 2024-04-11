@@ -1,9 +1,5 @@
-use std::collections::HashSet;
-
 use crate::{
-    api_services::repo::ApiServiceRepository,
-    database::Database,
-    auth::web::validate_jwt,
+    api_services::{models::DbApiRole, repo::ApiServiceRepository}, auth::web::validate_jwt, database::{Database, NAMESPACE_MEMBER_ROLE, ROLE_NAMESPACE_DELIMITER},
 };
 use actix_web::{web, HttpRequest, HttpResponse, Result};
 use futures_util::stream::TryStreamExt;
@@ -16,12 +12,11 @@ pub async fn forward(
     payload: web::Payload,
     db: web::Data<Database>,
 ) -> Result<HttpResponse> {
-
     let segments: Vec<&str> = req.path().splitn(4, '/').collect();
 
-    // Just validate that the token is valid and not expired. scopes will be checked later.
-    let claims = validate_jwt(&req, None)
-        .map_err(|e| actix_web::error::ErrorForbidden(e.to_string()))?;
+    // Just validate that the token is valid and not expired. aud/roles will be checked later.
+    let claims =
+        validate_jwt(&req, None).map_err(|e| actix_web::error::ErrorForbidden(e.to_string()))?;
 
     if segments.len() != 4 {
         return Ok(HttpResponse::BadRequest().finish());
@@ -30,49 +25,62 @@ pub async fn forward(
     let version = String::from(segments[2]);
     let endpoint = String::from(segments[3]);
 
-    log::debug!("Forwarding request to service [{}] version [{}] at endpoint {}", api_name, version, endpoint);
+    log::debug!(
+        "Forwarding request to service [{}] version [{}] at endpoint {}",
+        api_name,
+        version,
+        endpoint
+    );
 
     let client = Client::new();
 
-    if let Ok(service) = Database::get_service_by_name_and_version(&db, &api_name, &version).await {
+    if let Ok(service) = Database::get_service_with_roles(&db, &api_name, &version).await {
+
         // Construct the full URL
-        let service_scopes: Vec<&str> = service.gateway_scopes.iter().map(AsRef::as_ref).collect();
-        let authorized_scopes: Vec<String> = claims.aud;
-        if !check_scope_intersection(service_scopes, authorized_scopes) {
-            return Err(actix_web::error::ErrorForbidden("User is not authorized for service scopes"))
+        if !check_aud_authorized(&service.roles,  &claims.aud) {
+            return Err(actix_web::error::ErrorForbidden(
+                "User is not authorized for service roles",
+            ));
         }
         log::debug!("Configured Forward URL: {}", service.forward_url);
         let forward_url = format!("{}/{}", service.forward_url, endpoint);
-        
+
         log::info!(
-            "{} -> {}[{}] as {} \"{} {}\"", 
-            req.peer_addr().unwrap().ip().to_string(), 
+            "{} -> {}[{}] as {} \"{} {}\"",
+            req.peer_addr().unwrap().ip().to_string(),
             &api_name,
             &version,
             &claims.sub_id,
             &req.method(),
             &forward_url,
         );
-        
-
 
         // Initialize the client request
         let mut client_req = client.request(req.method().clone(), &forward_url);
 
         // Copy the headers
-        for (key, value) in req.headers().iter().filter(|(key, _)| !EXCLUDE_HEADERS.contains(&key.as_str()))  {
-            log::debug!("Passing header: {}: {:?}", key, value.clone().to_str().unwrap());
+        for (key, value) in req
+            .headers()
+            .iter()
+            .filter(|(key, _)| !EXCLUDE_HEADERS.contains(&key.as_str()))
+        {
+            log::debug!(
+                "Passing header: {}: {:?}",
+                key,
+                value.clone().to_str().unwrap()
+            );
             client_req = client_req.header(key.clone(), value.clone());
         }
 
         // Set additional headers for forwarding
-        client_req = client_req.header("X-Real-IP", req.peer_addr().unwrap().ip().to_string())
-        .header(
-            "X-Forwarded-For",
-            req.connection_info().realip_remote_addr().unwrap_or(""),
-        )
-        .header("X-Forwarded-Proto", req.connection_info().scheme())
-        .header("X-Forwarded-Host", req.connection_info().host());
+        client_req = client_req
+            .header("X-Real-IP", req.peer_addr().unwrap().ip().to_string())
+            .header(
+                "X-Forwarded-For",
+                req.connection_info().realip_remote_addr().unwrap_or(""),
+            )
+            .header("X-Forwarded-Proto", req.connection_info().scheme())
+            .header("X-Forwarded-Host", req.connection_info().host());
 
         // Stream the request body
         let body_stream = payload
@@ -107,17 +115,29 @@ pub async fn forward(
     }
 }
 
-fn check_scope_intersection(service_scopes: Vec<&str>, authorized_scopes: Vec<String>) -> bool {
-    // Convert authorized_scopes to a HashSet for efficient lookup
-    let authorized_set: HashSet<&String> = authorized_scopes.iter().collect();
+fn check_aud_authorized(
+    service_roles: &Vec<DbApiRole>,
+    claims_aud: &Vec<String>,
+) -> bool {
+    // Convert service roles to a HashSet for efficient lookup
+    if service_roles.iter()
+        .any(|role| claims_aud.contains(&format!("{}", role))){
+            return true;
+    }
+    
+    let namespaces: Vec<String> = service_roles.iter()
+        .filter(|r| r.name.eq(NAMESPACE_MEMBER_ROLE))
+        .map(|r| r.namespace.clone())
+        .collect();
 
-    // Iterate over service_scopes and check for any intersection
-    for scope in service_scopes {
-        if authorized_set.contains(&scope.to_string()) {
-            return true; // Found a matching scope, can return early
+    if !namespaces.is_empty() {
+        if claims_aud
+        .iter()
+        .any(|a| namespaces.iter().any(|r| r.starts_with(&format!("{}{}", a.clone(), ROLE_NAMESPACE_DELIMITER.to_string()))))
+        {
+            return true;
         }
     }
-
+    
     false // No matching scopes found
 }
-

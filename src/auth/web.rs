@@ -1,21 +1,19 @@
-use super::models::GatewayUserClaims;
-use super::{
-    models::{GatewayLoginCredentials, JwtConfig, PasswordForm, RequestIdParams},
-    repo::UserAuthRepository,
-};
-use crate::database::Database;
-use crate::errors::{GatewayError, Result, unknown_resource_error};
-use crate::auth::models::UserForm;
 use actix_web::http::header;
 use actix_web::{
     patch, post,
-    web::{scope, Data, Json, Path, ServiceConfig, to},
+    web::{scope, to, Data, Json, Path, ServiceConfig},
     HttpRequest, HttpResponse,
 };
 use jsonwebtoken::{decode, encode, Header, Validation};
 use serde_json::json;
 use std::time::SystemTime;
-use surrealdb::sql::{Id, Thing};
+
+use crate::database::Database;
+use crate::errors::{unknown_resource_error, GatewayError, Result};
+use super::models::{
+    GatewayLoginCredentials, GatewayUserClaims, JwtConfig, PasswordForm, RequestIdParams, UserForm,
+};
+use super::repo::UserAuthRepository;
 
 const GATEWAY_JWT_ISSUER: &str = "apigateway.local";
 
@@ -27,7 +25,7 @@ pub fn service_setup(cfg: &mut ServiceConfig) {
             .service(set_password)
             .service(request_password_reset)
             .service(reset_password)
-            .default_service(to(unknown_resource_error))
+            .default_service(to(unknown_resource_error)),
     );
 }
 
@@ -40,41 +38,33 @@ async fn authenticate_user(
     let credentials = credential_form.into_inner();
     let user =
         Database::authenticate_user(&repo, &credentials.username, &credentials.password).await?;
-    if let Some(Thing {
-        tb: _,
-        id: Id::String(user_id),
-    }) = user.id
-    {
-        let now_ts = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let duration = 24 * 60 * 60;
-        let claims = GatewayUserClaims {
-            // Issuer (us/apigateway.local)
-            iss: String::from(GATEWAY_JWT_ISSUER),
-            sub: user.username,
-            sub_id: user_id.clone(),
-            aud: user.scopes,
-            exp: now_ts + duration,
-            iat: now_ts,
-            nbf: now_ts,
-        };
-        let config: &Data<JwtConfig> = &req.app_data().unwrap();
-        let token = encode(
-            &Header::new(config.algorithm),
-            &claims,
-            &config.encoding_key,
-        )
-        .map_err(|e| GatewayError::TokenEncodeError(e.to_string()))?;
+    let user_id = format!("{}", user.id.id);
+    let now_ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let duration = 24 * 60 * 60;
+    dbg!(user.clone());
+    let claims = GatewayUserClaims {
+        // Issuer (us/apigateway.local)
+        iss: String::from(GATEWAY_JWT_ISSUER),
+        sub: user.username.clone(),
+        sub_id: user_id.clone(),
+        aud: user.roles.iter().map(|role| format!("{}", role)).collect(),
+        exp: now_ts + duration,
+        iat: now_ts,
+        nbf: now_ts,
+    };
+    let config: &Data<JwtConfig> = &req.app_data().unwrap();
+    let token = encode(
+        &Header::new(config.algorithm),
+        &claims,
+        &config.encoding_key,
+    )
+    .map_err(|e| GatewayError::TokenEncodeError(e.to_string()))?;
 
-        Database::set_last_login(&repo, &user_id).await?;
-        Ok(token)
-    } else {
-        Err(GatewayError::TokenEncodeError(String::from(
-            "Unable to build Auth Token",
-        )))
-    }
+    Database::set_last_login(&repo, &user_id).await?;
+    Ok(token)
 }
 
 #[patch("/set-password")]
@@ -86,10 +76,14 @@ async fn set_password(
     let auth_claims = validate_jwt(&req, None)?;
     let user_id = validate_jwt(&req, None)?.sub_id;
     let request_form = password_form.into_inner();
-    Database::authenticate_user(&repo, &auth_claims.sub, &request_form.old_password).await.map_err(|e| match e {
-        GatewayError::InvalidUsernameOrPassword(_) => GatewayError::InvalidUsernameOrPassword("Old password does not match".to_string()),
-        other => other
-    })?;
+    Database::authenticate_user(&repo, &auth_claims.sub, &request_form.old_password)
+        .await
+        .map_err(|e| match e {
+            GatewayError::InvalidUsernameOrPassword(_) => {
+                GatewayError::InvalidUsernameOrPassword("Old password does not match".to_string())
+            }
+            other => other,
+        })?;
     Database::set_user_password(&repo, &user_id, &request_form.password).await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -149,4 +143,42 @@ pub fn validate_jwt(req: &HttpRequest, scopes: Option<&Vec<&str>>) -> Result<Gat
     decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
         .and_then(|token_data| Ok(token_data.claims))
         .map_err(|e| GatewayError::TokenDecodeError(e.to_string()))
+}
+
+pub fn validate_jwt_prefix(
+    req: &HttpRequest,
+    scope_prefixes: &Vec<&str>,
+) -> Result<GatewayUserClaims> {
+    let jwt_config = req.app_data::<Data<JwtConfig>>().unwrap();
+    let token = match req.headers().get(header::AUTHORIZATION) {
+        Some(auth_header) => {
+            let auth_header = auth_header.to_str().unwrap_or("");
+            let parts: Vec<&str> = auth_header.splitn(2, ' ').collect();
+            if parts.len() != 2 || parts[0].to_lowercase() != "bearer" {
+                ()
+            }
+            Some(parts[1])
+        }
+        None => None,
+    }
+    .ok_or(GatewayError::Unauthorized(
+        "Missing 'Bearer' token from 'Authorization' header".to_string(),
+    ))?;
+
+    let mut validation = Validation::new(jwt_config.algorithm);
+    validation.validate_aud = false;
+    let claims = decode::<GatewayUserClaims>(token, &jwt_config.decoding_key, &validation)
+        .and_then(|token_data| Ok(token_data.claims))
+        .map_err(|e| GatewayError::TokenDecodeError(e.to_string()))?;
+
+    if !claims
+        .aud
+        .iter()
+        .any(|a| scope_prefixes.iter().any(|p| a.starts_with(p)))
+    {
+        return Err(GatewayError::TokenDecodeError(
+            "User does not have the requisite role".into(),
+        ));
+    }
+    Ok(claims)
 }
