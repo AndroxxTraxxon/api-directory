@@ -29,7 +29,6 @@ pub enum GatewayError {
 
     // #[error("Not implemented: {0}")]
     // NotImplemented(String),
-
     /**
      * Auth Errors
      */
@@ -46,7 +45,6 @@ pub enum GatewayError {
     // ConfigError(String)
     // #[error("Missing Authorization Scope: {0}")]
     // AccessDenied(String),
-
     #[error("System Error: {0}")]
     SystemError(String),
 

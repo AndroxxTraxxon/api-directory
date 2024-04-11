@@ -4,15 +4,13 @@ use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
 use validator::Validate;
 
-use crate::database::{
-    API_ROLE_TABLE, NAMESPACE_MEMBER_ROLE, ROLE_NAMESPACE_DELIMITER,
-};
+use crate::database::{API_ROLE_TABLE, NAMESPACE_MEMBER_ROLE, ROLE_NAMESPACE_DELIMITER};
 
 #[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct WebRequestApiService {
     #[validate(length(min = 3))]
     pub api_name: String,
-    
+
     #[validate(length(min = 1))]
     pub version: String,
 
@@ -87,7 +85,6 @@ pub struct DbFullApiService {
     pub roles: Vec<DbApiRole>,
 }
 
-
 impl From<&DbFullApiService> for WebResponseApiService {
     fn from(other: &DbFullApiService) -> Self {
         let mut namespaces: Vec<String> = Vec::new();
@@ -148,7 +145,6 @@ pub struct DbApiServiceRecord {
 }
 
 impl From<&WebRequestApiService> for DbApiServiceRequest {
-    
     fn from(value: &WebRequestApiService) -> Self {
         Self {
             api_name: value.api_name.clone(),
@@ -159,7 +155,6 @@ impl From<&WebRequestApiService> for DbApiServiceRequest {
         }
     }
 }
-
 
 impl From<(&DbApiServiceRecord, &Vec<DbApiRole>)> for DbFullApiService {
     fn from((service, roles): (&DbApiServiceRecord, &Vec<DbApiRole>)) -> Self {
@@ -203,7 +198,7 @@ impl From<&WebRequestPartialApiService> for Vec<WebApiRole> {
         let mut all_roles = Self::new();
         if let Some(roles) = &value.roles {
             all_roles.extend(roles.clone());
-        } 
+        }
         if let Some(namespaces) = &value.role_namespaces {
             for namespace in namespaces {
                 all_roles.push(WebApiRole {
@@ -244,7 +239,7 @@ impl From<&WebApiRole> for DbApiRole {
         Self {
             id: match &web_record.id {
                 Some(web_id) => Some(Thing::from((API_ROLE_TABLE.to_string(), web_id.clone()))),
-                _ => None
+                _ => None,
             },
             namespace: web_record.namespace.clone(),
             name: web_record.name.clone(),

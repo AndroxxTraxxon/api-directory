@@ -8,12 +8,12 @@ use jsonwebtoken::{decode, encode, Header, Validation};
 use serde_json::json;
 use std::time::SystemTime;
 
-use crate::database::Database;
-use crate::errors::{unknown_resource_error, GatewayError, Result};
 use super::models::{
     GatewayLoginCredentials, GatewayUserClaims, JwtConfig, PasswordForm, RequestIdParams, UserForm,
 };
 use super::repo::UserAuthRepository;
+use crate::database::Database;
+use crate::errors::{unknown_resource_error, GatewayError, Result};
 
 const GATEWAY_JWT_ISSUER: &str = "apigateway.local";
 
@@ -44,7 +44,6 @@ async fn authenticate_user(
         .unwrap()
         .as_secs();
     let duration = 24 * 60 * 60;
-    dbg!(user.clone());
     let claims = GatewayUserClaims {
         // Issuer (us/apigateway.local)
         iss: String::from(GATEWAY_JWT_ISSUER),

@@ -24,7 +24,7 @@ pub trait ApiServiceRepository {
         new_service: &models::DbApiServiceRequest,
         roles: &Vec<models::DbApiRole>,
     ) -> Result<models::DbFullApiService>;
-    async fn patch_service(
+    async fn update_service(
         repo: &Data<Database>,
         service_id: &String,
         partial_update: &models::WebRequestPartialApiService,
@@ -147,7 +147,7 @@ impl ApiServiceRepository for Database {
         Ok((added_service, roles).into())
     }
 
-    async fn patch_service(
+    async fn update_service(
         repo: &Data<Database>,
         service_id: &String,
         partial_update: &models::WebRequestPartialApiService,
@@ -159,8 +159,13 @@ impl ApiServiceRepository for Database {
             if let Some(_) = &web_role.id {
                 new_roles.push(web_role.into());
             } else {
-                new_roles
-                    .push(Database::get_role(&repo, &web_role.namespace, &web_role.name).await?);
+                match Database::find_role(&repo, &web_role.namespace, &web_role.name).await {
+                    Ok(role) => new_roles.push(role),
+                    Err(GatewayError::NotFound(_r, _m)) => {
+                        new_roles.push(Database::add_role(&repo, web_role).await?)
+                    }
+                    Err(err) => return Err(err),
+                }
             }
         }
 
@@ -193,7 +198,6 @@ impl ApiServiceRepository for Database {
 
         let update_data: Value =
             to_value(partial_update).map_err(|e| GatewayError::MissingData(e.to_string()))?; // Handle this unwrap more gracefully in production code
-
         if let Value::Object(fields) = update_data {
             // Start constructing the update query for the specific service ID
             let mut patch_request: Patch<
@@ -224,7 +228,6 @@ impl ApiServiceRepository for Database {
                 .ok_or(GatewayError::DatabaseError(String::from(
                     "Empty response from Database on API Service patch update.",
                 )))?;
-
             Ok((&patch_result, &new_roles).into())
         } else {
             Err(GatewayError::MissingData(String::from(
@@ -252,7 +255,7 @@ impl ApiServiceRepository for Database {
 #[async_trait]
 pub trait RoleRepository {
     async fn list_roles(repo: &Data<Database>) -> Result<Vec<models::DbApiRole>>;
-    async fn get_role(
+    async fn find_role(
         repo: &Data<Database>,
         namespace: &String,
         name: &String,
@@ -286,7 +289,7 @@ impl RoleRepository for Database {
             .map_err(Into::<GatewayError>::into)
     }
 
-    async fn get_role(
+    async fn find_role(
         repo: &Data<Database>,
         namespace: &String,
         name: &String,
@@ -302,8 +305,7 @@ impl RoleRepository for Database {
             .query(format!(
                 "\
                 SELECT * FROM {} \
-                WHERE active = TRUE AND \
-                namespace = $role_ns AND \
+                WHERE namespace = $role_ns AND \
                 name = $role_name \
                 LIMIT 1\
             ",
@@ -334,12 +336,22 @@ impl RoleRepository for Database {
             surrealdb::sql::Value::Thing(service_id.clone()),
         )]
         .into();
-        repo.query_list(
-            "select value roles from (select <-authorizes<-role.* as roles from $service_id)"
-                .to_string(),
-            Some(bind_params),
-        )
-        .await
+        log::info!("Querying Roles for service {}", service_id);
+        let roles: Vec<models::DbApiRole> = repo
+            .query_record(
+                format!(
+                    "select value roles from (select <-{}<-role.* as roles from $service_id)",
+                    AUTHORIZATIONS_TABLE
+                ),
+                Some(bind_params),
+            )
+            .await?
+            .ok_or(GatewayError::NotFound(
+                "Role".to_string(),
+                format!("Could not find roles for {}", service_id).to_string(),
+            ))?;
+
+        Ok(roles)
     }
 
     async fn get_namespaces(

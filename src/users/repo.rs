@@ -8,7 +8,10 @@ use serde_json::{to_value, Value};
 use surrealdb::opt::PatchOp;
 use surrealdb::sql::{Datetime, Thing};
 
-use super::models::{DbGatewayUserRequest, DbGatewayUserResponse, DbPartialGatewayUserUpdate, DbGatewayUserRecord};
+use super::models::{
+    DbGatewayUserRecord, DbGatewayUserRequest, DbGatewayUserResponse, DbPartialGatewayUserUpdate,
+    DbRegisteredUser,
+};
 use crate::api_services::models::DbApiRole;
 use crate::api_services::repo::RoleRepository;
 use crate::auth::models::PasswordResetRequest;
@@ -76,13 +79,22 @@ impl UserRepository for Database {
         // new_user.validate().map_err(|e| GatewayError::ValidationError(e.to_string()))?;
 
         // Insert the GatewayUser into the database
-        let inserted_user: DbGatewayUserResponse = repo
+        let inserted_user: DbRegisteredUser = repo
             .db
             .create(USER_TABLE)
             .content(new_user)
             .await
             .map_err(GatewayError::from)?
             .remove(0);
+
+        let inserted_user: DbGatewayUserRecord = repo
+            .db
+            .select(inserted_user.id)
+            .await
+            .map_err(GatewayError::from)?
+            .ok_or(GatewayError::DatabaseError(
+                "Failed to fetch inserted user".to_string(),
+            ))?;
 
         for role in roles.iter() {
             if let Some(role_id) = &role.id {
@@ -127,7 +139,7 @@ impl UserRepository for Database {
             password_reset.id.unwrap().id,
             user_id.clone()
         );
-        Ok(inserted_user)
+        Ok((inserted_user, roles).into())
     }
 
     async fn user_detail(repo: &Data<Database>, user_id: &String) -> Result<DbGatewayUserResponse> {
@@ -156,7 +168,7 @@ impl UserRepository for Database {
                     intended_roles.push(role.clone());
                 } else {
                     intended_roles
-                        .push(Database::get_role(repo, &role.namespace, &role.name).await?);
+                        .push(Database::find_role(repo, &role.namespace, &role.name).await?);
                 }
             }
         }
@@ -170,14 +182,12 @@ impl UserRepository for Database {
         for role in existing_roles {
             existing_role_ids.insert(role.id.unwrap());
         }
-        dbg!(existing_role_ids.difference(&new_role_ids).collect::<Vec<_>>());
         for role_to_remove in existing_role_ids.difference(&new_role_ids) {
             repo.unrelate(&user_id, role_to_remove, &ROLE_MEMBER_TABLE.to_string())
                 .await?;
         }
-        dbg!(new_role_ids.difference(&existing_role_ids).collect::<Vec<_>>());
         for role_to_add in new_role_ids.difference(&existing_role_ids) {
-            repo.relate(&user_id, role_to_add , &ROLE_MEMBER_TABLE.to_string(), None)
+            repo.relate(&user_id, role_to_add, &ROLE_MEMBER_TABLE.to_string(), None)
                 .await?;
         }
 
@@ -204,12 +214,10 @@ impl UserRepository for Database {
             }
 
             // Execute the update query
-            let _update_result: DbGatewayUserRecord = patch_request
-                .await
-                .map_err(GatewayError::from)?
-                .ok_or(GatewayError::DatabaseError(
-                    "Unable to update record".to_string(),
-                ))?;
+            let _update_result: DbGatewayUserRecord =
+                patch_request.await.map_err(GatewayError::from)?.ok_or(
+                    GatewayError::DatabaseError("Unable to update record".to_string()),
+                )?;
 
             let result: Option<DbGatewayUserResponse> = repo
                 .query_record(
@@ -227,10 +235,10 @@ impl UserRepository for Database {
                 )
                 .await?;
 
-                result.ok_or(GatewayError::NotFound(
-                    String::from("API Service"),
-                    format!("An API Service could not be found at id {}", user_id),
-                ))
+            result.ok_or(GatewayError::NotFound(
+                String::from("API Service"),
+                format!("An API Service could not be found at id {}", user_id),
+            ))
         } else {
             Err(GatewayError::MissingData(String::from(
                 "Didn't understand the input data",
@@ -240,7 +248,10 @@ impl UserRepository for Database {
 
     async fn list_users(repo: &Data<Database>) -> Result<Vec<DbGatewayUserResponse>> {
         repo.db
-            .query(format!("SELECT *, ->{}->role.* as roles FROM {}", ROLE_MEMBER_TABLE, USER_TABLE))
+            .query(format!(
+                "SELECT *, ->{}->role.* as roles FROM {}",
+                ROLE_MEMBER_TABLE, USER_TABLE
+            ))
             .await
             .map_err(Into::<GatewayError>::into)?
             .take(0)
@@ -253,14 +264,15 @@ impl UserRepository for Database {
             surrealdb::sql::Value::Thing(user_id.clone()),
         )]
         .into();
-        let result: Option<Vec<DbApiRole>> = repo.query_record(
-            format!(
-                "SELECT VALUE roles FROM (SELECT ->{}->role.* AS roles FROM $user_id)",
-                ROLE_MEMBER_TABLE
-            ),
-            Some(bind_params),
-        )
-        .await?;
+        let result: Option<Vec<DbApiRole>> = repo
+            .query_record(
+                format!(
+                    "SELECT VALUE roles FROM (SELECT ->{}->role.* AS roles FROM $user_id)",
+                    ROLE_MEMBER_TABLE
+                ),
+                Some(bind_params),
+            )
+            .await?;
         Ok(result.unwrap_or(Vec::new()))
     }
 }

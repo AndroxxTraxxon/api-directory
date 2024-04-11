@@ -3,13 +3,10 @@ use actix_web::{
     web::{scope, to, Data, Json, Path, ServiceConfig},
     HttpRequest,
 };
-use serde::Deserialize; 
+use serde::Deserialize;
 
 use super::{
-    models::{
-        WebGatewayUserRequest, WebGatewayUserResponse,
-        WebPartialGatewayUserUpdate,
-    },
+    models::{WebGatewayUserRequest, WebGatewayUserResponse, WebPartialGatewayUserUpdate},
     repo::UserRepository,
 };
 
@@ -39,7 +36,7 @@ async fn list_users(
 ) -> Result<Json<Vec<WebGatewayUserResponse>>> {
     validate_jwt(&req, Some(&vec!["Gateway::Admin"]))?;
     let user_list = Database::list_users(&repo).await?;
-    Ok(Json(user_list.iter().map(|db_rec | db_rec.into()).collect()))
+    Ok(Json(user_list.iter().map(|db_rec| db_rec.into()).collect()))
 }
 
 #[post("/")]
@@ -50,11 +47,8 @@ async fn register_user(
 ) -> Result<Json<WebGatewayUserResponse>> {
     validate_jwt(&req, Some(&vec!["Gateway::Admin"]))?;
     let user_data = user_json.into_inner();
-    let registered_user = Database::register_user(
-        &repo, 
-        (&user_data).into(), 
-        (&user_data).into()
-    ).await?;
+    let registered_user =
+        Database::register_user(&repo, (&user_data).into(), (&user_data).into()).await?;
     Ok(Json((&registered_user).into()))
 }
 
@@ -95,6 +89,7 @@ async fn update_user(
     validate_jwt(&req, Some(&vec!["Gateway::Admin"]))?;
     let user_id = path_params.into_inner().user_id;
     let user = user_form.into_inner();
-    let updated_user = Database::update_user(&repo, &user_id, (&user).into(), (&user).into()).await?;
+    let updated_user =
+        Database::update_user(&repo, &user_id, (&user).into(), (&user).into()).await?;
     Ok(Json((&updated_user).into()))
 }

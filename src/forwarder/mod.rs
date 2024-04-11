@@ -1,7 +1,10 @@
 use crate::{
-    api_services::{models::DbApiRole, repo::ApiServiceRepository}, auth::web::validate_jwt, database::{Database, NAMESPACE_MEMBER_ROLE, ROLE_NAMESPACE_DELIMITER},
+    api_services::{models::DbApiRole, repo::ApiServiceRepository},
+    auth::web::validate_jwt,
+    database::{Database, NAMESPACE_MEMBER_ROLE, ROLE_NAMESPACE_DELIMITER},
+    errors::GatewayError,
 };
-use actix_web::{web, HttpRequest, HttpResponse, Result};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use futures_util::stream::TryStreamExt;
 use reqwest::Client;
 
@@ -11,7 +14,7 @@ pub async fn forward(
     req: HttpRequest,
     payload: web::Payload,
     db: web::Data<Database>,
-) -> Result<HttpResponse> {
+) -> impl Responder {
     let segments: Vec<&str> = req.path().splitn(4, '/').collect();
 
     // Just validate that the token is valid and not expired. aud/roles will be checked later.
@@ -32,14 +35,16 @@ pub async fn forward(
         endpoint
     );
 
-    let client = Client::new();
+    let client = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|err| GatewayError::SystemError(err.to_string()))?;
 
     if let Ok(service) = Database::get_service_with_roles(&db, &api_name, &version).await {
-
         // Construct the full URL
-        if !check_aud_authorized(&service.roles,  &claims.aud) {
+        if !check_aud_authorized(&service.roles, &claims.aud) {
             return Err(actix_web::error::ErrorForbidden(
-                "User is not authorized for service roles",
+                "User roles do not authorize access to this service",
             ));
         }
         log::debug!("Configured Forward URL: {}", service.forward_url);
@@ -115,29 +120,34 @@ pub async fn forward(
     }
 }
 
-fn check_aud_authorized(
-    service_roles: &Vec<DbApiRole>,
-    claims_aud: &Vec<String>,
-) -> bool {
+fn check_aud_authorized(service_roles: &Vec<DbApiRole>, claims_aud: &Vec<String>) -> bool {
     // Convert service roles to a HashSet for efficient lookup
-    if service_roles.iter()
-        .any(|role| claims_aud.contains(&format!("{}", role))){
-            return true;
+    if service_roles
+        .iter()
+        .any(|role| claims_aud.contains(&format!("{}", role)))
+    {
+        log::debug!("Found exact role match");
+        return true;
     }
-    
-    let namespaces: Vec<String> = service_roles.iter()
+
+    let namespaces: Vec<String> = service_roles
+        .iter()
         .filter(|r| r.name.eq(NAMESPACE_MEMBER_ROLE))
         .map(|r| r.namespace.clone())
         .collect();
+    dbg!(&namespaces);
+    dbg!(claims_aud);
 
     if !namespaces.is_empty() {
-        if claims_aud
-        .iter()
-        .any(|a| namespaces.iter().any(|r| r.starts_with(&format!("{}{}", a.clone(), ROLE_NAMESPACE_DELIMITER.to_string()))))
-        {
+        if claims_aud.iter().any(|aud| {
+            namespaces.iter().any(|ns| {
+                aud.starts_with(&format!("{}{}", ns, ROLE_NAMESPACE_DELIMITER.to_string()))
+            })
+        }) {
+            log::debug!("Found namespace match");
             return true;
         }
     }
-    
+    log::debug!("No matching aud found");
     false // No matching scopes found
 }

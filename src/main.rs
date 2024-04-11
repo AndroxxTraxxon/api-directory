@@ -1,5 +1,5 @@
-use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use actix_files;
+use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use env_logger;
 use serde_json::json;
 
@@ -51,7 +51,6 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-
 
 async fn not_found() -> impl actix_web::Responder {
     HttpResponse::NotFound().json(json!({"success": false, "error": "Unknown Config Service"}))

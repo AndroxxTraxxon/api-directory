@@ -4,6 +4,13 @@ use surrealdb::sql::{Datetime, Thing};
 use validator::Validate;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Validate)]
+
+pub struct DbRegisteredUser {
+    pub id: Thing,
+    pub username: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Validate)]
 pub struct DbGatewayUserRecord {
     pub id: Thing,
     #[validate(length(min = 4))]
@@ -63,7 +70,7 @@ impl From<&WebPartialGatewayUserUpdate> for Option<Vec<DbApiRole>> {
     fn from(value: &WebPartialGatewayUserUpdate) -> Self {
         match &value.roles {
             Some(roles) => Some(roles.iter().map(DbApiRole::from).collect()),
-            None => None
+            None => None,
         }
     }
 }
@@ -95,7 +102,6 @@ impl From<&WebGatewayUserRequest> for Vec<DbApiRole> {
     }
 }
 
-
 impl From<&DbGatewayUserResponse> for WebGatewayUserResponse {
     fn from(value: &DbGatewayUserResponse) -> Self {
         Self {
@@ -106,6 +112,20 @@ impl From<&DbGatewayUserResponse> for WebGatewayUserResponse {
             last_modified_date: value.last_modified_date.clone(),
             last_login: value.last_login.clone(),
             password_reset_at: value.password_reset_at.clone(),
+        }
+    }
+}
+
+impl From<(DbGatewayUserRecord, Vec<DbApiRole>)> for DbGatewayUserResponse {
+    fn from((user, roles): (DbGatewayUserRecord, Vec<DbApiRole>)) -> Self {
+        Self {
+            id: user.id,
+            username: user.username,
+            roles,
+            created_date: user.created_date,
+            last_modified_date: user.last_modified_date,
+            last_login: user.last_login,
+            password_reset_at: user.password_reset_at,
         }
     }
 }

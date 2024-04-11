@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
+use serde;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde;
 use std::io;
 use surrealdb::engine::local::{Db, SpeeDb};
 use surrealdb::sql::{Strand, Thing, Value};
@@ -19,12 +19,11 @@ pub const AUTHORIZATIONS_TABLE: &str = "authorizes";
 pub const NAMESPACE_MEMBER_ROLE: &str = "__ROLE_NAMESPACE_MEMBER__";
 pub const ROLE_NAMESPACE_DELIMITER: &str = "::";
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Relationship {
     pub id: Thing,
 
-    #[serde(rename="in")]
+    #[serde(rename = "in")]
     pub _in: Thing,
 
     pub out: Thing,
@@ -48,6 +47,16 @@ impl Database {
             name: String::from(name),
         })
     }
+
+    // pub async fn get_record<T>(self: &Self, record_id: &Thing) -> Result<T, GatewayError>
+    // where T: DeserializeOwned
+    // {
+    //     self.db
+    //     .select(record_id)
+    //     .await
+    //     .map_err(GatewayError::from)?
+    //     .ok_or(GatewayError::NotFound(record_id.tb.clone(), format!("{}", &record_id.id)))
+    // }
 
     pub async fn define_index(
         self: &Self,
@@ -188,8 +197,7 @@ impl Database {
         to: &Thing,
         relationship_table: impl std::fmt::Display,
         content: Option<BTreeMap<String, Value>>,
-    ) -> Result<Relationship, GatewayError>
-    {
+    ) -> Result<Relationship, GatewayError> {
         let mut query: String = format!("RELATE $from->{}->$to", relationship_table);
         let mut params: BTreeMap<String, Value> = [
             ("from".into(), Value::Thing(from.clone())),
@@ -201,25 +209,24 @@ impl Database {
             params.insert("data".into(), Value::Object(data.into()));
         }
         let query_result: Option<Relationship> = self.query_record(query, Some(params)).await?;
-        query_result.ok_or(GatewayError::DatabaseError("Could not create relationship".to_string()))
+        query_result.ok_or(GatewayError::DatabaseError(
+            "Could not create relationship".to_string(),
+        ))
     }
 
     pub async fn unrelate(
         self: &Self,
         from: &Thing,
         to: &Thing,
-        rel: &String
-    ) -> Result<(), GatewayError>
-    {
+        rel: &String,
+    ) -> Result<(), GatewayError> {
         let query = "DELETE type::table($rel) WHERE in=$from and out=$to";
         let params: BTreeMap<String, Value> = [
             ("from".into(), Value::Thing(from.clone())),
             ("to".into(), Value::Thing(to.clone())),
-            (
-                "rel".into(),
-                Value::Strand(Strand::from(rel.clone())),
-            ),
-        ].into();
+            ("rel".into(), Value::Strand(Strand::from(rel.clone()))),
+        ]
+        .into();
         self.db
             .query(query)
             .bind(params)
@@ -237,19 +244,12 @@ impl Database {
         T: DeserializeOwned + std::fmt::Debug,
     {
         let mut db_query = self.db.query(query);
-        dbg!(&db_query);
-        dbg!(serde_json::to_string_pretty(&params).unwrap());
         if let Some(bind_params) = params {
             db_query = db_query.bind(bind_params);
         }
-        let mut response = db_query
-            .await
-            .map_err(Into::<GatewayError>::into)?;
-        dbg!(&response);
+        let mut response = db_query.await.map_err(Into::<GatewayError>::into)?;
         let query_result: Result<Option<T>, surrealdb::Error> = response.take(0);
-        dbg!(&query_result);
         let records = query_result.map_err(Into::<GatewayError>::into)?;
-        dbg!(&records);
         Ok(records)
     }
 
@@ -262,19 +262,13 @@ impl Database {
         T: DeserializeOwned + std::fmt::Debug,
     {
         let mut db_query = self.db.query(query);
-        dbg!(&db_query);
-        dbg!(serde_json::to_string(&params).unwrap());
         if let Some(bind_params) = params {
             db_query = db_query.bind(bind_params);
         }
-        let mut response = db_query
-            .await
-            .map_err(Into::<GatewayError>::into)?;
-        dbg!(&response);
+        let mut response = db_query.await.map_err(Into::<GatewayError>::into)?;
+        log::debug!("Deserializing object");
         let query_result: Result<Vec<T>, surrealdb::Error> = response.take(0);
-        dbg!(&query_result);
         let records = query_result.map_err(Into::<GatewayError>::into)?;
-        dbg!(&records);
         Ok(records)
     }
 }

@@ -9,7 +9,7 @@ use surrealdb::sql::{Datetime, Id, Strand};
 use super::models::PasswordResetRequest;
 use crate::database::{Database, PASSWORD_RESET_TABLE, ROLE_MEMBER_TABLE, USER_TABLE};
 use crate::errors::{GatewayError, Result};
-use crate::users::models::{DbGatewayUserResponse, DbGatewayUserRecord};
+use crate::users::models::{DbGatewayUserRecord, DbGatewayUserResponse};
 
 const REQUEST_LIFETIME: u64 = 24 * 60 * 60;
 
@@ -54,27 +54,37 @@ impl UserAuthRepository for Database {
         password: &String,
     ) -> Result<DbGatewayUserResponse> {
         let bind_params: BTreeMap<String, surrealdb::sql::Value> = [
-            ("userTable".into(), surrealdb::sql::Value::Strand(Strand::from(USER_TABLE))),
-            ("username".into(), surrealdb::sql::Value::Strand(Strand::from(username.clone()))),
-            ("password".into(), surrealdb::sql::Value::Strand(Strand::from(password.clone()))),
-        ].into();
+            (
+                "userTable".into(),
+                surrealdb::sql::Value::Strand(Strand::from(USER_TABLE)),
+            ),
+            (
+                "username".into(),
+                surrealdb::sql::Value::Strand(Strand::from(username.clone())),
+            ),
+            (
+                "password".into(),
+                surrealdb::sql::Value::Strand(Strand::from(password.clone())),
+            ),
+        ]
+        .into();
         let mut response = repo
             .db
-            .query(
-                format!("\
+            .query(format!(
+                "\
                 SELECT *, ->{}->role.* as roles FROM type::table($userTable) \
                 WHERE username = $username \
                 AND password_hash IS NOT NONE
                 AND crypto::argon2::compare(password_hash, $password)\
-            ", ROLE_MEMBER_TABLE),
-            )
+            ",
+                ROLE_MEMBER_TABLE
+            ))
             .bind(bind_params)
             .await
             .map_err(Into::<GatewayError>::into)?;
         log::info!("Queried user... converting...");
-        let query_result: Option<DbGatewayUserResponse> = response
-            .take(0)
-            .map_err(Into::<GatewayError>::into)?;
+        let query_result: Option<DbGatewayUserResponse> =
+            response.take(0).map_err(Into::<GatewayError>::into)?;
         query_result.ok_or(GatewayError::InvalidUsernameOrPassword(String::from(
             "Could not authenticate with the provided username and password",
         )))
@@ -207,13 +217,9 @@ impl UserAuthRepository for Database {
             .await
             .map_err(Into::<GatewayError>::into)?;
 
-        dbg!(&response);
+        let query_result: Option<DbGatewayUserRecord> =
+            response.take(0).map_err(Into::<GatewayError>::into)?;
 
-        let query_result: Option<DbGatewayUserRecord> = response
-            .take(0)
-            .map_err(Into::<GatewayError>::into)?;
-
-        dbg!(&query_result);
         let found_user: DbGatewayUserRecord = query_result.ok_or(GatewayError::NotFound(
             String::from("User"),
             String::from("Could not find user to request password reset"),
@@ -222,8 +228,7 @@ impl UserAuthRepository for Database {
             .duration_since(time::UNIX_EPOCH)
             .map_err(|e| GatewayError::SystemError(e.to_string()))?
             .as_secs();
-        if let Id::String(user_id) = found_user.id.id
-        {
+        if let Id::String(user_id) = found_user.id.id {
             let response: Vec<PasswordResetRequest> = repo
                 .db
                 .create(PASSWORD_RESET_TABLE)

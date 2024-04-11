@@ -66,7 +66,7 @@ async fn get_role_by_namespace_and_name(
     let parsed_path = path_params.into_inner();
     let namespace = parsed_path.namespace;
     let name = parsed_path.name;
-    let found_role = Database::get_role(&repo, &namespace, &name).await?;
+    let found_role = Database::find_role(&repo, &namespace, &name).await?;
     Ok(Json(WebApiRole::from(&found_role)))
 }
 
@@ -103,7 +103,7 @@ async fn add_service(
     for role in roles.iter() {
         match &role.id {
             Some(_) => db_roles.push(role.into()),
-            None => match Database::get_role(&repo, &role.namespace, &role.name).await {
+            None => match Database::find_role(&repo, &role.namespace, &role.name).await {
                 Ok(role) => db_roles.push(role),
 
                 Err(GatewayError::NotFound(_t, _m)) => {
@@ -136,7 +136,7 @@ async fn patch_service(
     validate_jwt(&req, Some(&vec!["Gateway::Admin"]))?;
     let service_id = path_params.into_inner().service_id;
     let patched_service =
-        Database::patch_service(&repo, &service_id, &service.into_inner().into()).await?;
+        Database::update_service(&repo, &service_id, &service.into_inner().into()).await?;
     Ok(Json(WebResponseApiService::from(&patched_service)))
 }
 
