@@ -41,6 +41,10 @@ async fn main() -> std::io::Result<()> {
             .configure(users::web::service_setup)
             .service(web::scope("/cfg").default_service(web::route().to(not_found)))
             .service(actix_files::Files::new("/app", "./www").index_file("index.html"))
+            .service(web::scope("/app").default_service(web::route().to(webui_index)))
+            .route("/login", web::get().to(webui_index))
+            .route("/reset-password", web::get().to(webui_index))
+            .route("/reset-password/{token}", web::get().to(webui_index))
             .service(web::redirect("/", "/app"))
             .default_service(
                 // Register `forward` as the default service
@@ -50,6 +54,11 @@ async fn main() -> std::io::Result<()> {
     .bind_rustls_0_22(socket_addr, tls_config)?
     .run()
     .await
+}
+
+async fn webui_index() -> actix_files::NamedFile {
+    actix_files::NamedFile::open("./www/index.html")
+        .unwrap()
 }
 
 async fn not_found() -> impl actix_web::Responder {

@@ -15,6 +15,7 @@ pub async fn forward(
     payload: web::Payload,
     db: web::Data<Database>,
 ) -> impl Responder {
+    log::debug!("Attempting to forward request...");
     let segments: Vec<&str> = req.path().splitn(4, '/').collect();
 
     // Just validate that the token is valid and not expired. aud/roles will be checked later.

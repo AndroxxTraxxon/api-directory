@@ -93,7 +93,11 @@ async fn request_password_reset(
     user_form: Json<UserForm>,
 ) -> Result<HttpResponse> {
     let username = user_form.into_inner().username;
-    let _ = Database::request_password_reset(&repo, &username).await;
+    let request_result = Database::request_password_reset(&repo, &username).await;
+    match request_result {
+        Err(e) => log::debug!("{}", e),
+        _ => ()
+    };
     Ok(HttpResponse::Created().json(json!({"success": true, "message": format!("If a user exists with the username {}, they will receive a message to reset their password through the appropriate channel.", &username)})))
 }
 

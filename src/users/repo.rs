@@ -56,6 +56,7 @@ pub async fn setup_user_table(repo: &Database) -> std::io::Result<()> {
         Some("UNIQUE"),
     )
     .await?;
+    repo.automate_created_date(USER_TABLE).await?;
 
     repo.define_index(
         ROLE_MEMBER_TABLE,
