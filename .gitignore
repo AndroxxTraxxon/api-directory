@@ -6,3 +6,4 @@ temp.speedb
 history.txt
 www
 .rust-analyzer
+.DS_Store

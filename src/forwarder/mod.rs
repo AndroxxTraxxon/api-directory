@@ -17,7 +17,7 @@ pub async fn forward(
 ) -> impl Responder {
     log::debug!("Attempting to forward request...");
     let segments: Vec<&str> = req.path().splitn(4, '/').collect();
-
+    
     // Just validate that the token is valid and not expired. aud/roles will be checked later.
     let claims =
         validate_jwt(&req, None).map_err(|e| actix_web::error::ErrorForbidden(e.to_string()))?;
@@ -27,7 +27,12 @@ pub async fn forward(
     }
     let api_name = String::from(segments[1]);
     let version = String::from(segments[2]);
-    let endpoint = String::from(segments[3]);
+    let mut endpoint = String::from(segments[3]);
+    let query = req.query_string();
+    if !query.is_empty(){
+        endpoint.push_str("?");
+        endpoint.push_str(query);
+    }
 
     log::debug!(
         "Forwarding request to service [{}] version [{}] at endpoint {}",
@@ -136,8 +141,6 @@ fn check_aud_authorized(service_roles: &Vec<DbApiRole>, claims_aud: &Vec<String>
         .filter(|r| r.name.eq(NAMESPACE_MEMBER_ROLE))
         .map(|r| r.namespace.clone())
         .collect();
-    dbg!(&namespaces);
-    dbg!(claims_aud);
 
     if !namespaces.is_empty() {
         if claims_aud.iter().any(|aud| {
